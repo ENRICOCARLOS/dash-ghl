@@ -196,9 +196,10 @@ export async function GET(request: NextRequest) {
     }
     // #endregion
     if (oppErr) break;
-    if (!page?.length) break;
-    oppRows.push(...(page as OppRow[]));
-    if (page.length < OPP_PAGE) break;
+    const pageData: unknown = page;
+    if (!Array.isArray(pageData) || pageData.length === 0) break;
+    oppRows.push(...(pageData as OppRow[]));
+    if (pageData.length < OPP_PAGE) break;
     oppOffset += OPP_PAGE;
   }
 
