@@ -175,13 +175,13 @@ export async function GET(request: NextRequest) {
   const leadsQualified = oppPeriod.length;
   const leadsQualifiedPrev = previousPeriod ? oppPrev.length : null;
 
-  const eventRows: { id: string; start_time: string | null; status: string | null; created_at: string }[] = [];
+  const eventRows: { id: string; start_time: string | null; status: string | null; created_at: string; contact_id: string | null }[] = [];
   let evOffset = 0;
   const EV_PAGE = 1000;
   while (true) {
     const { data: evPage, error: evErr } = await service
       .from("calendar_events")
-      .select("id, start_time, status, created_at")
+      .select("id, start_time, status, created_at, contact_id")
       .eq("client_id", cred.client_id)
       .not("start_time", "is", null)
       .range(evOffset, evOffset + EV_PAGE - 1);
@@ -195,7 +195,7 @@ export async function GET(request: NextRequest) {
     evOffset += EV_PAGE;
   }
 
-  const events = eventRows as { start_time: string | null; status: string | null; created_at: string }[];
+  const events = eventRows as { start_time: string | null; status: string | null; created_at: string; contact_id: string | null }[];
   const eventsByStartTime = events.filter((e) => {
     const ms = toMs(e.start_time);
     return inRange(ms, startMs, endMs);
