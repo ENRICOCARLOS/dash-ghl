@@ -263,7 +263,7 @@ export async function GET(request: NextRequest) {
   for (const e of events) {
     const ms = toMs(e.start_time);
     if (!inRange(ms, startMs, endMs)) continue;
-    const k = key(new Date(ms));
+    const k = key(new Date(ms!));
     const cur = seriesMap.get(k) ?? { leads: 0, appointments: 0, sales: 0, investment: 0 };
     cur.appointments += 1;
     seriesMap.set(k, cur);
@@ -300,7 +300,7 @@ export async function GET(request: NextRequest) {
   for (const e of events) {
     const ms = toMs(e.start_time);
     if (!inRange(ms, monthlyStart, monthlyEnd)) continue;
-    const m = monthKey(new Date(ms));
+    const m = monthKey(new Date(ms!));
     const cur = monthlyMap.get(m) ?? emptyMonth();
     cur.appointments += 1;
     if (String(e.status ?? "").toLowerCase() === "showed") cur.callsRealized += 1;
