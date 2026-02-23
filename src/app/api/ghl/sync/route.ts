@@ -168,7 +168,7 @@ function getYesterdayBoundsAmericaSaoPaulo(): { startMs: number; endMs: number }
   return { startMs, endMs };
 }
 
-export type SyncMode = "incremental_1h" | "daily_reprocess" | "full";
+type SyncMode = "incremental_1h" | "daily_reprocess" | "full";
 
 /**
  * Sincroniza dados do GHL para o Supabase.
