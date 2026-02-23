@@ -1,0 +1,96 @@
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:start","message":"Auth init effect started","data":{},"timestamp":1771638803128,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:catch","message":"Auth init catch","data":{"err":"Error: timeout"},"timestamp":1771638805130,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:finally","message":"Auth init finally, setLoading(false)","data":{"cancelled":false},"timestamp":1771638805131,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:start","message":"Auth init effect started","data":{},"timestamp":1771638815911,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:catch","message":"Auth init catch","data":{"err":"Error: timeout"},"timestamp":1771638817914,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:finally","message":"Auth init finally, setLoading(false)","data":{"cancelled":false},"timestamp":1771638817915,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:login:start","message":"login called","data":{"email":"car"},"timestamp":1771638865323,"hypothesisId":"H6"}
+{"sessionId":"e2c915","location":"page.tsx:handleSubmit:start","message":"form submit","data":{},"timestamp":1771638865322,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:login:signInTimeout","message":"signInWithPassword timed out","data":{"err":"Error: signin_timeout"},"timestamp":1771638880327,"hypothesisId":"H6"}
+{"sessionId":"e2c915","location":"page.tsx:handleSubmit:afterLogin","message":"login returned","data":{"ok":false},"timestamp":1771638880328,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:start","message":"Auth init effect started","data":{},"timestamp":1771639001252,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:catch","message":"Auth init catch","data":{"err":"Error: timeout"},"timestamp":1771639003526,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:finally","message":"Auth init finally, setLoading(false)","data":{"cancelled":false},"timestamp":1771639003526,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:start","message":"Auth init effect started","data":{},"timestamp":1771639128470,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:catch","message":"Auth init catch","data":{"err":"Error: timeout"},"timestamp":1771639130477,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:finally","message":"Auth init finally, setLoading(false)","data":{"cancelled":false},"timestamp":1771639130477,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"page.tsx:handleSubmit:start","message":"form submit","data":{},"timestamp":1771639136193,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:login:start","message":"login called","data":{"email":"car"},"timestamp":1771639136194,"hypothesisId":"H6"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:login:signInTimeout","message":"signInWithPassword timed out","data":{"err":"Error: signin_timeout"},"timestamp":1771639151196,"hypothesisId":"H6"}
+{"sessionId":"e2c915","location":"page.tsx:handleSubmit:afterLogin","message":"login returned","data":{"ok":false},"timestamp":1771639151197,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:start","message":"Auth init effect started","data":{},"timestamp":1771639159073,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:getSession:done","message":"getSession returned","data":{"hasSession":false},"timestamp":1771639159096,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:finally","message":"Auth init finally, setLoading(false)","data":{"cancelled":false},"timestamp":1771639159096,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"page.tsx:handleSubmit:start","message":"form submit","data":{},"timestamp":1771639165505,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:login:start","message":"login called","data":{"email":"CAR"},"timestamp":1771639165506,"hypothesisId":"H6"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:fetchSession:start","message":"fetchSession called","data":{"hasToken":true},"timestamp":1771639166195,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"session/route.ts:GET:start","message":"GET:start","data":{},"timestamp":1771639167009,"hypothesisId":"H2"}
+{"sessionId":"e2c915","location":"session/route.ts:GET:afterCookieUser","message":"GET:afterCookieUser","data":{"hasUser":true},"timestamp":1771639167567,"hypothesisId":"H2"}
+{"sessionId":"e2c915","location":"session/route.ts:GET:returnSuccess","message":"returning user and clients","data":{"userId":"b362680b-099e-41f0-b374-1d6edc5cc816","clientsCount":0},"timestamp":1771639169426,"hypothesisId":"H2"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:fetchSession:afterFetch","message":"session fetch returned","data":{"ok":true,"status":200},"timestamp":1771639169432,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:fetchSession:start","message":"fetchSession called","data":{"hasToken":true},"timestamp":1771639169433,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"session/route.ts:GET:start","message":"GET:start","data":{},"timestamp":1771639169863,"hypothesisId":"H2"}
+{"sessionId":"e2c915","location":"session/route.ts:GET:afterCookieUser","message":"GET:afterCookieUser","data":{"hasUser":true},"timestamp":1771639170069,"hypothesisId":"H2"}
+{"sessionId":"e2c915","location":"session/route.ts:GET:returnSuccess","message":"returning user and clients","data":{"userId":"b362680b-099e-41f0-b374-1d6edc5cc816","clientsCount":0},"timestamp":1771639171015,"hypothesisId":"H2"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:fetchSession:afterFetch","message":"session fetch returned","data":{"ok":true,"status":200},"timestamp":1771639171022,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:login:done","message":"login ok, redirecting","data":{},"timestamp":1771639171023,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"page.tsx:handleSubmit:afterLogin","message":"login returned","data":{"ok":true},"timestamp":1771639171023,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"page.tsx:handleSubmit:start","message":"form submit","data":{},"timestamp":1771639273254,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:login:start","message":"login called","data":{"email":"car"},"timestamp":1771639273254,"hypothesisId":"H6"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:login:signInTimeout","message":"signInWithPassword timed out","data":{"err":"Error: signin_timeout"},"timestamp":1771639288268,"hypothesisId":"H6"}
+{"sessionId":"e2c915","location":"page.tsx:handleSubmit:afterLogin","message":"login returned","data":{"ok":false},"timestamp":1771639288269,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:start","message":"Auth init effect started","data":{},"timestamp":1771639288968,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:getSession:done","message":"getSession returned","data":{"hasSession":false},"timestamp":1771639288991,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:finally","message":"Auth init finally, setLoading(false)","data":{"cancelled":false},"timestamp":1771639288991,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"page.tsx:handleSubmit:start","message":"form submit","data":{},"timestamp":1771639296322,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:login:start","message":"login called","data":{"email":"v2w"},"timestamp":1771639296323,"hypothesisId":"H6"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:login:error","message":"signIn error","data":{"msg":"Invalid login credentials"},"timestamp":1771639296573,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"page.tsx:handleSubmit:afterLogin","message":"login returned","data":{"ok":false},"timestamp":1771639296574,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"page.tsx:handleSubmit:start","message":"form submit","data":{},"timestamp":1771639299819,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:login:start","message":"login called","data":{"email":"v2w"},"timestamp":1771639299820,"hypothesisId":"H6"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:login:error","message":"signIn error","data":{"msg":"Invalid login credentials"},"timestamp":1771639300001,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"page.tsx:handleSubmit:afterLogin","message":"login returned","data":{"ok":false},"timestamp":1771639300001,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"page.tsx:handleSubmit:start","message":"form submit","data":{},"timestamp":1771639306254,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:login:start","message":"login called","data":{"email":"v2w"},"timestamp":1771639306254,"hypothesisId":"H6"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:fetchSession:start","message":"fetchSession called","data":{"hasToken":true},"timestamp":1771639306513,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"session/route.ts:GET:start","message":"GET:start","data":{},"timestamp":1771639306846,"hypothesisId":"H2"}
+{"sessionId":"e2c915","location":"session/route.ts:GET:afterCookieUser","message":"GET:afterCookieUser","data":{"hasUser":true},"timestamp":1771639307340,"hypothesisId":"H2"}
+{"sessionId":"e2c915","location":"session/route.ts:GET:returnSuccess","message":"returning user and clients","data":{"userId":"16bd8df2-ab35-4ea5-8f4c-6cd168002bb5","clientsCount":0},"timestamp":1771639308281,"hypothesisId":"H2"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:fetchSession:afterFetch","message":"session fetch returned","data":{"ok":true,"status":200},"timestamp":1771639308284,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:fetchSession:start","message":"fetchSession called","data":{"hasToken":true},"timestamp":1771639308285,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"session/route.ts:GET:start","message":"GET:start","data":{},"timestamp":1771639308694,"hypothesisId":"H2"}
+{"sessionId":"e2c915","location":"session/route.ts:GET:afterCookieUser","message":"GET:afterCookieUser","data":{"hasUser":true},"timestamp":1771639308864,"hypothesisId":"H2"}
+{"sessionId":"e2c915","location":"session/route.ts:GET:returnSuccess","message":"returning user and clients","data":{"userId":"16bd8df2-ab35-4ea5-8f4c-6cd168002bb5","clientsCount":0},"timestamp":1771639310046,"hypothesisId":"H2"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:fetchSession:afterFetch","message":"session fetch returned","data":{"ok":true,"status":200},"timestamp":1771639310049,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:login:done","message":"login ok, redirecting","data":{},"timestamp":1771639310050,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"page.tsx:handleSubmit:afterLogin","message":"login returned","data":{"ok":true},"timestamp":1771639310050,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:start","message":"Auth init effect started","data":{},"timestamp":1771639311757,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:start","message":"Auth init effect started","data":{},"timestamp":1771639311767,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:getSession:done","message":"getSession returned","data":{"hasSession":true},"timestamp":1771639311781,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:fetchSession:start","message":"fetchSession called","data":{"hasToken":true},"timestamp":1771639311781,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"session/route.ts:GET:start","message":"GET:start","data":{},"timestamp":1771639312139,"hypothesisId":"H2"}
+{"sessionId":"e2c915","location":"session/route.ts:GET:afterCookieUser","message":"GET:afterCookieUser","data":{"hasUser":true},"timestamp":1771639312328,"hypothesisId":"H2"}
+{"sessionId":"e2c915","location":"session/route.ts:GET:returnSuccess","message":"returning user and clients","data":{"userId":"16bd8df2-ab35-4ea5-8f4c-6cd168002bb5","clientsCount":0},"timestamp":1771639313525,"hypothesisId":"H2"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:fetchSession:afterFetch","message":"session fetch returned","data":{"ok":true,"status":200},"timestamp":1771639313528,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:finally","message":"Auth init finally, setLoading(false)","data":{"cancelled":false},"timestamp":1771639313529,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:catch","message":"Auth init catch","data":{"err":"Error: timeout"},"timestamp":1771639313761,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:finally","message":"Auth init finally, setLoading(false)","data":{"cancelled":false},"timestamp":1771639313762,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:start","message":"Auth init effect started","data":{},"timestamp":1771639319044,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:start","message":"Auth init effect started","data":{},"timestamp":1771639319046,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:catch","message":"Auth init catch","data":{"err":"Error: timeout"},"timestamp":1771639321053,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:finally","message":"Auth init finally, setLoading(false)","data":{"cancelled":false},"timestamp":1771639321054,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:catch","message":"Auth init catch","data":{"err":"Error: timeout"},"timestamp":1771639321524,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:finally","message":"Auth init finally, setLoading(false)","data":{"cancelled":false},"timestamp":1771639321525,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:start","message":"Auth init effect started","data":{},"timestamp":1771639341170,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:start","message":"Auth init effect started","data":{},"timestamp":1771639341174,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:catch","message":"Auth init catch","data":{"err":"Error: timeout"},"timestamp":1771639343173,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:finally","message":"Auth init finally, setLoading(false)","data":{"cancelled":false},"timestamp":1771639343173,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:catch","message":"Auth init catch","data":{"err":"Error: timeout"},"timestamp":1771639343517,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:finally","message":"Auth init finally, setLoading(false)","data":{"cancelled":false},"timestamp":1771639343518,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:start","message":"Auth init effect started","data":{},"timestamp":1771639408879,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:catch","message":"Auth init catch","data":{"err":"Error: timeout"},"timestamp":1771639410881,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:effect:finally","message":"Auth init finally, setLoading(false)","data":{"cancelled":false},"timestamp":1771639410881,"hypothesisId":"H1"}
+{"sessionId":"e2c915","location":"page.tsx:handleSubmit:start","message":"form submit","data":{},"timestamp":1771639417677,"hypothesisId":"H3"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:login:start","message":"login called","data":{"email":"car"},"timestamp":1771639417677,"hypothesisId":"H6"}
+{"sessionId":"e2c915","location":"AuthContext.tsx:login:signInTimeout","message":"signInWithPassword timed out","data":{"err":"Error: signin_timeout"},"timestamp":1771639433687,"hypothesisId":"H6"}
+{"sessionId":"e2c915","location":"page.tsx:handleSubmit:afterLogin","message":"login returned","data":{"ok":false},"timestamp":1771639433688,"hypothesisId":"H3"}

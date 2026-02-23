@@ -1,0 +1,35 @@
+---
+description: Orientações para o Dashboard e indicadores (GHL, período, pré-definições)
+globs: src/app/(painel)/dashboard/**/*,src/app/api/dashboard/**/*,src/app/api/ghl/**/*
+alwaysApply: false
+---
+
+# Indicadores do Dashboard
+
+## Contexto geral
+- O dashboard consome dados da API do GoHighLevel (GHL). Cada cliente tem sua própria `locationId` e `apiKey` no Supabase. **Nunca misturar dados de locations diferentes.** Em todas as chamadas à API use as credenciais da location atualmente selecionada na sessão.
+
+## Pré-definição: campo data da venda
+- Antes de renderizar indicadores, o sistema verifica na tabela `location_predefinitions` se o cliente configurou qual campo customizado representa a **data da venda**.
+- Fluxo: chamar a API GHL para listar campos customizados de oportunidades → exibir em Predefinições → salvar em `location_predefinitions` com `key = 'sale_date_field_id'`.
+- **Ao salvar uma nova seleção:** executar o script de desativação da linha anterior (UPDATE … SET active = false WHERE client_id AND key = 'sale_date_field_id') **antes** de inserir o novo registro. A rota `POST /api/ghl/predefinitions/sale-date-field` já faz isso.
+- Se nenhum campo estiver configurado, usar como padrão a **data de criação da oportunidade** (`createdAt`).
+
+## Filtro global de período
+- Todos os 5 indicadores reagem ao mesmo filtro de período, sempre visível no topo do dashboard.
+- Opções: Hoje / Esta semana / Este mês / Este ano / Personalizado (início e fim).
+- Ao alterar o período ou os funis, limpar estado e refazer as chamadas; todos os indicadores atualizam em conjunto.
+- O filtro de período é combinado com o filtro de funis (pipelines selecionadas).
+
+## Indicadores (resumo)
+1. **Vendas & Faturamento:** oportunidades `status = won`, filtro de período no campo das pré-definições (ou `createdAt`), filtro de funis. Exibir: quantidade de vendas e soma de `monetaryValue`.
+2. **Calls Realizadas:** appointments com `status = showed`, período em `startTime`. Reutilizar o número de vendas do indicador 1 para taxa de conversão (vendas ÷ showed × 100).
+3. **Calls Agendadas:** todos os status de appointment, período em `startTime`. Reutilizar o número de “showed” do indicador 2 para taxa de comparecimento (showed ÷ total × 100).
+4. **Agendamentos Criados:** appointments com período em **`createdAt`** (quando o agendamento foi criado). Chamada/filtragem distinta dos indicadores 2 e 3 (que usam `startTime`).
+5. **Leads Qualificados:** oportunidades criadas no período (`createdAt`), filtro de funis. Compartilhar a base de oportunidades com o indicador 1 (uma chamada, filtrar localmente).
+
+## Regras de implementação
+- **API:** Sempre passar `locationId`; agrupar chamadas e usar `Promise.all` quando possível; em erro no card, exibir "—" e ícone de aviso, sem quebrar o layout.
+- **Dados:** Indicadores 1 e 5 = uma chamada de oportunidades, filtrar localmente. Indicadores 2 e 3 = uma chamada de appointments por `startTime`, separar por status localmente. Indicador 4 = filtro por `createdAt` (chamada ou filtragem separada).
+- **Estado:** Um único contexto de estado; ao mudar período ou funis, refazer todas as chamadas; usar skeleton loader nos cards até carregar (nunca mostrar zero antes de carregar).
+- **Variação:** Cada card exibe abaixo do número principal a variação em relação ao período anterior equivalente (ex.: filtro “este mês” → comparar com mês anterior, +12% verde ou -8% vermelho). Se não houver dados do período anterior, ocultar o elemento de variação.
