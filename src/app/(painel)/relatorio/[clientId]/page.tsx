@@ -1022,9 +1022,8 @@ export default function RelatorioClientePage() {
                       : extra.series;
                   const isCost = evoMode === "custo";
                   const everyN = Math.max(1, Math.floor(chartData.length / 6));
-                  const renderLabel =
-                    (indices: Set<number>, stroke: string) =>
-                    (props: { value?: unknown; index?: number; x?: number; y?: number }) => {
+                  const renderLabel = (indices: Set<number>, stroke: string) => {
+                    const ChartTickLabel = (props: { value?: unknown; index?: number; x?: number; y?: number }) => {
                       const idx = props.index;
                       const val = typeof props.value === "number" ? props.value : Number(props.value);
                       if (idx == null || !indices.has(idx) || !Number.isFinite(val)) return null;
@@ -1037,6 +1036,9 @@ export default function RelatorioClientePage() {
                         </text>
                       );
                     };
+                    ChartTickLabel.displayName = "ChartTickLabel";
+                    return ChartTickLabel;
+                  };
                   const labelProps = (indices: Set<number>, stroke: string) => ({
                     content: renderLabel(indices, stroke) as (props: unknown) => React.ReactElement | null,
                     position: "top" as const,
