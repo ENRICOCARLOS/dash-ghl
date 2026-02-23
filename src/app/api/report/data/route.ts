@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
       const src = (o.source ?? "").toString().trim() || "—";
       sourcesSet.add(src);
     }
-    oppRows.push(...(page as { pipeline_id: string | null; stage_id: string | null }[]));
+    oppRows.push(...(page as { pipeline_id: string | null; stage_id: string | null; source: string | null }[]));
     if (page.length < PAGE) break;
     oppOffset += PAGE;
   }
