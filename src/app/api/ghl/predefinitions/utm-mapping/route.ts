@@ -24,8 +24,8 @@ const OPPORTUNITY_ADS_LINK_OPP_COLUMN = "opportunity_ads_link_opportunity_column
 const OPPORTUNITY_ADS_LINK_ADS_COLUMN = "opportunity_ads_link_ads_column";
 
 const UTM_COLUMNS = ["utm_source", "utm_campaign", "utm_medium", "utm_term", "utm_content"] as const;
-export const OPPORTUNITY_ADS_LINK_OPP_OPTIONS = [...UTM_COLUMNS] as const;
-export const OPPORTUNITY_ADS_LINK_ADS_OPTIONS = [
+const OPPORTUNITY_ADS_LINK_OPP_OPTIONS = [...UTM_COLUMNS] as const;
+const OPPORTUNITY_ADS_LINK_ADS_OPTIONS = [
   "ad_id",
   "ad_name",
   "campaign_id",
@@ -34,7 +34,7 @@ export const OPPORTUNITY_ADS_LINK_ADS_OPTIONS = [
   "adset_name",
 ] as const;
 
-export type UtmMappingPayload = {
+type UtmMappingPayload = {
   client_id?: string;
   utm_source_field_id?: string | null;
   utm_campaign_field_id?: string | null;
