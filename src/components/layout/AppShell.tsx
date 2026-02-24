@@ -45,8 +45,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <Topbar />
         <main
-          style={{ position: "relative", zIndex: 1 }}
-          className="flex-1 overflow-y-auto px-6 py-5 text-[var(--text-primary)]"
+          style={{ position: "relative", zIndex: 1, minWidth: 0 }}
+          className="flex-1 overflow-y-auto overflow-x-hidden px-6 py-5 text-[var(--text-primary)]"
         >
           {children}
         </main>

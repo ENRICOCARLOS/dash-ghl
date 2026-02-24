@@ -118,9 +118,51 @@ function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
 
+/** Parte inteira e centavos para exibir centavos em fonte menor. */
+function formatCurrencyParts(value: number): { main: string; cents: string } {
+  const full = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+  const lastComma = full.lastIndexOf(",");
+  if (lastComma === -1) return { main: full, cents: "" };
+  return { main: full.slice(0, lastComma), cents: full.slice(lastComma) };
+}
+
 function formatMaybeCurrency(value: number | null): string {
   if (value == null || !Number.isFinite(value)) return "—";
   return formatCurrency(value);
+}
+
+/** Exibe número nas tabelas: 0 vira "—". */
+function numOrDash(n: number): string | number {
+  return n === 0 ? "—" : n;
+}
+
+/** Exibe valor em dinheiro: 0 vira "—". */
+function moneyOrDash(value: number): string {
+  if (value === 0 || !Number.isFinite(value)) return "—";
+  return formatCurrency(value);
+}
+
+/** Valor em R$ com centavos em fonte menor (para uso em células e KPIs). */
+function MoneyWithSmallCents({ value }: { value: number }) {
+  if (value === 0 || !Number.isFinite(value)) return <>—</>;
+  const { main, cents } = formatCurrencyParts(value);
+  return <>{main}{cents ? <span className="cur-cents">{cents}</span> : null}</>;
+}
+
+/** Exibe percentual: 0 vira "—". */
+function rateOrDash(value: number): string {
+  if (value === 0 || !Number.isFinite(value)) return "—";
+  return `${value.toFixed(1)}%`;
+}
+
+/** Iniciais do nome (ex.: "Maria Silva" → "MS", "Não atribuído" → "?"). */
+function getInitials(name: string): string {
+  const t = name.trim();
+  if (!t) return "?";
+  if (t.toLowerCase() === "não atribuído" || t === "Não atribuído") return "?";
+  const parts = t.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return t.slice(0, 2).toUpperCase();
 }
 
 function calcDivision(numerator: number, denominator: number): number | null {
@@ -213,13 +255,6 @@ const SUMMARY_COL_DEFS: { id: string; label: string }[] = [
   { id: "roas", label: "ROAS" },
 ];
 
-const RESPONSIBLE_COL_DEFS: { id: string; label: string }[] = [
-  { id: "responsavel", label: "Responsável" },
-  { id: "vendas", label: "Vendas" },
-  { id: "fatur", label: "Faturamento" },
-  { id: "tx", label: "Tx. Conv." },
-];
-
 export default function RelatorioClientePage() {
   const params = useParams();
   const router = useRouter();
@@ -252,9 +287,7 @@ export default function RelatorioClientePage() {
     utmContent: { name: string; leads: number; sales: number; revenue: number; investment?: number; appointments?: number; callsRealized?: number }[];
     bySource: { source: string; opportunities: number; sales: number; revenue: number; conversion: number }[];
     revenueByRange: { range: string; count: number; revenue: number }[];
-    crossSourceResponsible?: { sources: string[]; responsibles: string[]; leads: number[][]; sales: number[][] };
-    availableDimensions?: { id: string; label: string }[];
-    crossMatrix?: { rowDim: string; colDim: string; rowLabels: string[]; colLabels: string[]; leads: number[][]; sales: number[][] };
+    splitByField?: { dimId: string; label: string; totalOpportunities: number; totalRevenue: number; rows: { value: string; opportunities: number; sales: number; revenue: number; appointments: number; callsRealized: number; pctOpportunities: number; pctRevenue: number }[] }[];
   } | null>(null);
   const [lineChartSeries, setLineChartSeries] = useState<("leads" | "appointments" | "sales" | "investment")[]>(["leads", "investment"]);
   const [evoMode, setEvoMode] = useState<"volume" | "custo">("volume");
@@ -262,15 +295,33 @@ export default function RelatorioClientePage() {
   const [filterResponsible, setFilterResponsible] = useState<string[]>([]);
   const [filterResponsibleDropdownOpen, setFilterResponsibleDropdownOpen] = useState(false);
   const filterResponsibleDropdownRef = useRef<HTMLDivElement>(null);
-  const [crossMetric, setCrossMetric] = useState<"leads" | "sales">("leads");
-  const [crossRowDim, setCrossRowDim] = useState<string>("source");
-  const [crossColDim, setCrossColDim] = useState<string>("responsible");
   const [loading, setLoading] = useState(true);
   const [indicatorsLoading, setIndicatorsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [funnelPipelineId, setFunnelPipelineId] = useState<string>("");
+  /** IDs das etapas ocultas no funil de conversão (são somadas à etapa anterior). */
+  const [funnelHiddenStageIds, setFunnelHiddenStageIds] = useState<Set<string>>(new Set());
+  const [funnelFilterOpen, setFunnelFilterOpen] = useState(false);
+  const funnelFilterRef = useRef<HTMLDivElement>(null);
   const [summaryColPanelOpen, setSummaryColPanelOpen] = useState(false);
   const [summaryCols, setSummaryCols] = useState<string[]>(["mes", "leads", "agend", "vendas", "fatur", "invest", "calls", "cpl", "cpAgend", "cpCall", "cpa", "roas"]);
+
+  /** Campos personalizados: ordenação por painel e página por painel */
+  const SPLIT_SORT_OPTIONS = [
+    { id: "value", label: "Nome" },
+    { id: "sales", label: "Vendas" },
+    { id: "appointments", label: "Agend." },
+    { id: "callsRealized", label: "Calls" },
+    { id: "revenue", label: "Faturamento" },
+    { id: "pctRevenue", label: "% fatur." },
+    { id: "opportunities", label: "Oportunidades" },
+    { id: "pctOpportunities", label: "% oport." },
+  ] as const;
+  const SPLIT_PAGE_SIZE = 10;
+  const [splitSortByPanel, setSplitSortByPanel] = useState<Record<string, { key: string; dir: "asc" | "desc" }>>({});
+  const [splitPageByPanel, setSplitPageByPanel] = useState<Record<string, number>>({});
+  /** Filtro ao clicar em um card: filtra as demais tabelas por este valor (dimId + value). */
+  const [splitSelectedFilter, setSplitSelectedFilter] = useState<{ dimId: string; value: string; label: string } | null>(null);
 
   const toggleSummaryCol = useCallback((id: string) => {
     setSummaryCols((prev) => {
@@ -286,18 +337,6 @@ export default function RelatorioClientePage() {
   const [origemCols, setOrigemCols] = useState<string[]>(["origem", "oportunidades", "vendas", "fatur", "conversao"]);
   const toggleOrigemCol = useCallback((id: string) => {
     setOrigemCols((prev) => {
-      if (prev.includes(id)) {
-        const next = prev.filter((c) => c !== id);
-        return next.length ? next : prev;
-      }
-      return [...prev, id];
-    });
-  }, []);
-
-  const [responsibleColPanelOpen, setResponsibleColPanelOpen] = useState(false);
-  const [responsibleCols, setResponsibleCols] = useState<string[]>(["responsavel", "vendas", "fatur", "tx"]);
-  const toggleResponsibleCol = useCallback((id: string) => {
-    setResponsibleCols((prev) => {
       if (prev.includes(id)) {
         const next = prev.filter((c) => c !== id);
         return next.length ? next : prev;
@@ -339,6 +378,9 @@ export default function RelatorioClientePage() {
     const handleClick = (e: MouseEvent) => {
       if (filterResponsibleDropdownRef.current && !filterResponsibleDropdownRef.current.contains(e.target as Node)) {
         setFilterResponsibleDropdownOpen(false);
+      }
+      if (funnelFilterRef.current && !funnelFilterRef.current.contains(e.target as Node)) {
+        setFunnelFilterOpen(false);
       }
     };
     document.addEventListener("click", handleClick);
@@ -411,8 +453,10 @@ export default function RelatorioClientePage() {
     searchParams.set("year", String(selectedYear));
     if (selectedPipelineIds.length > 0) searchParams.set("pipeline_ids", selectedPipelineIds.join(","));
     if (selectedSources.length > 0) searchParams.set("sources", selectedSources.join(","));
-    searchParams.set("row_dim", crossRowDim);
-    searchParams.set("col_dim", crossColDim);
+    if (splitSelectedFilter) {
+      searchParams.set("split_filter_dim", splitSelectedFilter.dimId);
+      searchParams.set("split_filter_value", splitSelectedFilter.value);
+    }
     try {
       const res = await authFetch(`/api/report/extra?${searchParams}`).then((r) => r.json());
       if (res.error) throw new Error(res.error);
@@ -420,7 +464,7 @@ export default function RelatorioClientePage() {
     } catch {
       setExtra(null);
     }
-  }, [clientId, authFetch, periodBounds.start, periodBounds.end, selectedYear, selectedPipelineIds, selectedSources, crossRowDim, crossColDim]);
+  }, [clientId, authFetch, periodBounds.start, periodBounds.end, selectedYear, selectedPipelineIds, selectedSources, splitSelectedFilter]);
 
   useEffect(() => {
     if (!clientId) {
@@ -452,13 +496,52 @@ export default function RelatorioClientePage() {
     return () => window.removeEventListener("dash-ghl-sync-complete", onSync);
   }, [fetchPipelinesAndCounts, fetchIndicators, fetchInvestment, fetchExtra]);
 
-  useEffect(() => {
-    if (pipelines.length > 0 && !funnelPipelineId) setFunnelPipelineId(pipelines[0].id);
-  }, [pipelines, funnelPipelineId]);
+  const FUNNEL_STORAGE_KEY = clientId ? `dash-ghl-funnel-${clientId}` : null;
 
   useEffect(() => {
-    if (crossColDim === crossRowDim) setCrossColDim(crossRowDim === "source" ? "responsible" : "source");
-  }, [crossRowDim, crossColDim]);
+    if (!clientId || pipelines.length === 0) return;
+    const key = `dash-ghl-funnel-${clientId}`;
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const data = JSON.parse(raw) as { pipelineId?: string; hiddenStageIds?: string[] };
+        if (data.pipelineId && pipelines.some((p) => p.id === data.pipelineId)) {
+          setFunnelPipelineId(data.pipelineId);
+          const pipeline = pipelines.find((p) => p.id === data.pipelineId);
+          const stageIds = new Set((pipeline?.stages ?? []).map((s) => s.id));
+          const hidden = (data.hiddenStageIds ?? []).filter((id) => stageIds.has(id));
+          setFunnelHiddenStageIds(new Set(hidden));
+          return;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    if (!funnelPipelineId) setFunnelPipelineId(pipelines[0].id);
+  }, [clientId, pipelines]);
+
+  useEffect(() => {
+    if (!FUNNEL_STORAGE_KEY) return;
+    try {
+      localStorage.setItem(FUNNEL_STORAGE_KEY, JSON.stringify({
+        pipelineId: funnelPipelineId,
+        hiddenStageIds: Array.from(funnelHiddenStageIds),
+      }));
+    } catch {
+      /* ignore */
+    }
+  }, [FUNNEL_STORAGE_KEY, funnelPipelineId, funnelHiddenStageIds]);
+
+  useEffect(() => {
+    setFunnelFilterOpen(false);
+    setFunnelHiddenStageIds((prev) => {
+      const pipeline = funnelPipelineId ? pipelines.find((p) => p.id === funnelPipelineId) : pipelines[0];
+      const stageIds = new Set((pipeline?.stages ?? []).map((s) => s.id));
+      const next = new Set<string>();
+      prev.forEach((id) => { if (stageIds.has(id)) next.add(id); });
+      return next;
+    });
+  }, [funnelPipelineId, pipelines]);
 
   const togglePipeline = (id: string) => {
     setSelectedPipelineIds((prev) => {
@@ -499,6 +582,42 @@ export default function RelatorioClientePage() {
   const funnelTotal = funnelStagesWithCount.reduce((sum, s) => sum + s.count, 0);
   const funnelMax = Math.max(...funnelStagesWithCount.map((s) => s.count), 1);
 
+  /** Etapas exibidas no funil: ocultas são somadas à etapa anterior (visível). */
+  const funnelDisplayStages = (() => {
+    const stages = funnelStagesWithCount;
+    if (stages.length === 0) return [];
+    const hidden = funnelHiddenStageIds;
+    const result: { id: string; name: string; count: number; isFirst: boolean }[] = [];
+    let i = 0;
+    while (i < stages.length) {
+      const stage = stages[i];
+      if (!hidden.has(stage.id)) {
+        let displayCount = stage.count;
+        let j = i + 1;
+        while (j < stages.length && hidden.has(stages[j].id)) {
+          displayCount += stages[j].count;
+          j++;
+        }
+        result.push({ id: stage.id, name: stage.name, count: displayCount, isFirst: result.length === 0 });
+        i = j;
+      } else {
+        i++;
+      }
+    }
+    return result;
+  })();
+  const funnelDisplayTotal = funnelDisplayStages.reduce((sum, s) => sum + s.count, 0);
+  const funnelDisplayMax = Math.max(...funnelDisplayStages.map((s) => s.count), 1);
+
+  const toggleFunnelStageHidden = useCallback((stageId: string) => {
+    setFunnelHiddenStageIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(stageId)) next.delete(stageId);
+      else next.add(stageId);
+      return next;
+    });
+  }, []);
+
   if (!hasAccess) return null;
   if (!clientId) {
     return (
@@ -536,7 +655,6 @@ export default function RelatorioClientePage() {
   const convAgendToCalls = appointments > 0 ? (calls / appointments) * 100 : 0;
   const convCallsToVendas = calls > 0 ? (sales / calls) * 100 : 0;
   const convLeadsToVendas = leads > 0 ? (sales / leads) * 100 : 0;
-  const funnelSegments = [leads, appointments, calls, sales];
 
   const today = new Date();
   const currentYear = today.getFullYear();
@@ -553,10 +671,6 @@ export default function RelatorioClientePage() {
           <p className="page-subtitle">
             Indicadores e funil de atendimento · {MONTHS[selectedMonth]} {selectedYear}
           </p>
-        </div>
-        <div className="r-live">
-          <span className="r-live-dot" />
-          Ao vivo
         </div>
       </div>
 
@@ -746,11 +860,11 @@ export default function RelatorioClientePage() {
           <div className="kpi-strip">
             <div className="kpi-card accent">
               <div className="kpi-name">Faturamento</div>
-              <div className="kpi-val"><span className="cur">R$</span>{formatCurrency(ind?.revenue ?? 0).replace(/^R\$\s*/, "")}</div>
+              <div className="kpi-val"><MoneyWithSmallCents value={ind?.revenue ?? 0} /></div>
               <div className="kpi-divider" />
               <div className="kpi-sub-row">
-                <div className="kpi-sub-item ads"><div className="sub-lbl">Anúncios</div><div className="sub-val"><span className="cur">R$</span>{formatCurrency(revenueAds).replace(/^R\$\s*/, "")}</div></div>
-                <div className="kpi-sub-item org"><div className="sub-lbl">Outros</div><div className="sub-val"><span className="cur">R$</span>{formatCurrency((ind?.revenue ?? 0) - revenueAds).replace(/^R\$\s*/, "")}</div></div>
+                <div className="kpi-sub-item ads"><div className="sub-lbl">Anúncios</div><div className="sub-val"><MoneyWithSmallCents value={revenueAds} /></div></div>
+                <div className="kpi-sub-item org"><div className="sub-lbl">Outros</div><div className="sub-val"><MoneyWithSmallCents value={(ind?.revenue ?? 0) - revenueAds} /></div></div>
               </div>
             </div>
             <div className="kpi-card">
@@ -791,90 +905,123 @@ export default function RelatorioClientePage() {
             </div>
           </div>
 
-          {/* Funil de Conversão — template structure: card + funnel rows + conv strip + coluna direita */}
+          {/* Funil de Conversão — etapas = pipeline do banco; filtro "Ocultar no funil" agrega à etapa anterior */}
           <div className="sec-label"><span>Funil de Conversão</span></div>
           <div className="two-col two-col-6040">
             <div className="card">
               <div className="card-header">
                 <span className="card-title">Funil de Conversão</span>
-                <span className="card-badge badge-blue">Cumulativo · Por etapa</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {funnelPipeline && funnelStagesWithCount.length > 0 && (
+                    <div className="relative" ref={funnelFilterRef}>
+                      <button
+                        type="button"
+                        onClick={() => setFunnelFilterOpen((o) => !o)}
+                        className="rounded-lg border border-[var(--border)] bg-[var(--bg-raised)] px-2 py-1 text-xs text-[var(--text-primary)] flex items-center gap-1.5"
+                        aria-expanded={funnelFilterOpen}
+                        aria-label="Ocultar etapas no funil"
+                      >
+                        Ocultar no funil
+                        {funnelHiddenStageIds.size > 0 && <span className="rounded-full bg-[var(--accent)] text-[var(--bg-base)] text-[10px] px-1.5">{funnelHiddenStageIds.size}</span>}
+                      </button>
+                      {funnelFilterOpen && (
+                        <div className="absolute top-full left-0 mt-1 z-20 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] py-2 min-w-[180px] shadow-lg">
+                          <div className="px-3 pb-1.5 text-[10px] uppercase tracking-wider text-[var(--text-dim)]">Ocultar etapa (soma na anterior)</div>
+                          {funnelStagesWithCount.map((s) => (
+                            <label key={s.id} className="flex items-center gap-2 px-3 py-1 hover:bg-[var(--bg-hover)] cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={funnelHiddenStageIds.has(s.id)}
+                                onChange={() => toggleFunnelStageHidden(s.id)}
+                                className="rounded border-[var(--border)] accent-[var(--accent)]"
+                              />
+                              <span className="text-xs truncate">{s.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <span className="card-badge badge-blue">Etapas do pipeline</span>
+                </div>
               </div>
               <div className="funnel-col-header">
                 <div className="fcol-stage">Etapa</div>
                 <div className="fcol-bar">Proporção</div>
                 <div className="fcol-total">Total</div>
-                <div className="fcol-lost">Perdidos</div>
                 <div className="fcol-tx">Tx. Conv.</div>
+                <div className="fcol-lost">Perdidos</div>
               </div>
-              <div className="funnel-row">
-                <div className="fcol-stage">
-                  <span className="frow-dot" style={{ background: "var(--hi)", boxShadow: "0 0 6px var(--hi-border)" }} />
-                  <span className="frow-name">Leads</span>
-                </div>
-                <div className="fcol-bar"><div className="frow-bar-track"><div className="frow-bar-fill" style={{ width: "100%", background: "linear-gradient(90deg, var(--hi-dim), var(--hi))" }} /></div></div>
-                <div className="fcol-total"><span className="frow-num" style={{ color: "var(--hi)" }}>{leads.toLocaleString("pt-BR")}</span></div>
-                <div className="fcol-lost"><span className="frow-dash">—</span></div>
-                <div className="fcol-tx"><span className="frow-dash">—</span></div>
-              </div>
-              <div className="funnel-row">
-                <div className="fcol-stage">
-                  <span className="frow-dot" style={{ background: "var(--accent)", boxShadow: "0 0 6px var(--accent-glow)" }} />
-                  <span className="frow-name">Agendamentos</span>
-                </div>
-                <div className="fcol-bar"><div className="frow-bar-track"><div className="frow-bar-fill" style={{ width: `${leads > 0 ? Math.max((appointments / leads) * 100, 1) : 0}%`, background: "linear-gradient(90deg, var(--accent), var(--accent-dim))" }} /></div></div>
-                <div className="fcol-total"><span className="frow-num" style={{ color: "var(--accent)" }}>{appointments.toLocaleString("pt-BR")}</span></div>
-                <div className="fcol-lost"><span className="frow-lost-val">{leads - appointments}</span></div>
-                <div className="fcol-tx"><span className="frow-tx">{convLeadsToAgend.toFixed(2)}%</span></div>
-              </div>
-              <div className="funnel-row">
-                <div className="fcol-stage">
-                  <span className="frow-dot" style={{ background: "var(--warning)", boxShadow: "0 0 6px var(--warning-muted)" }} />
-                  <span className="frow-name">Calls Realizadas</span>
-                </div>
-                <div className="fcol-bar"><div className="frow-bar-track"><div className="frow-bar-fill" style={{ width: `${leads > 0 ? Math.max((calls / leads) * 100, 0.5) : 0}%`, minWidth: calls > 0 ? 6 : 0, background: "linear-gradient(90deg, var(--warning), var(--warning-muted))" }} /></div></div>
-                <div className="fcol-total"><span className="frow-num" style={{ color: "var(--warning)" }}>{calls}</span></div>
-                <div className="fcol-lost"><span className="frow-lost-val">{appointments - calls}</span></div>
-                <div className="fcol-tx"><span className="frow-tx">{convAgendToCalls.toFixed(2)}%</span></div>
-              </div>
-              <div className="funnel-row" style={{ borderBottom: "none" }}>
-                <div className="fcol-stage">
-                  <span className="frow-dot" style={{ background: "var(--success)", boxShadow: "0 0 6px var(--success-muted)" }} />
-                  <span className="frow-name">Vendas</span>
-                </div>
-                <div className="fcol-bar"><div className="frow-bar-track"><div className="frow-bar-fill" style={{ width: `${leads > 0 ? Math.max(convLeadsToVendas, 0.2) : 0}%`, minWidth: sales > 0 ? 6 : 0, background: "linear-gradient(90deg, var(--success), var(--success-muted))" }} /></div></div>
-                <div className="fcol-total"><span className="frow-num" style={{ color: "var(--success)" }}>{sales}</span></div>
-                <div className="fcol-lost"><span className="frow-dash">—</span></div>
-                <div className="fcol-tx"><span className="frow-tx-final">{convLeadsToVendas.toFixed(2)}%<span style={{ color: "var(--text-dim)", fontSize: "0.65rem", fontWeight: 400, marginLeft: 3 }}> de leads</span></span></div>
-              </div>
-              <div className="funnel-conv-strip">
-                <div className="fcs-item">
-                  <div className="fcs-label">Leads → Agend.</div>
-                  <div className="fcs-val">{convLeadsToAgend.toFixed(2)}%</div>
-                  <div className="fcs-detail">{appointments} / {leads.toLocaleString("pt-BR")}</div>
-                  <div className="fcs-bar"><div className="fcs-fill" style={{ width: `${Math.min(convLeadsToAgend, 100)}%` }} /></div>
-                </div>
-                <div className="fcs-divider" />
-                <div className="fcs-item">
-                  <div className="fcs-label">Agend. → Calls</div>
-                  <div className="fcs-val">{convAgendToCalls.toFixed(2)}%</div>
-                  <div className="fcs-detail">{calls} / {appointments}</div>
-                  <div className="fcs-bar"><div className="fcs-fill" style={{ width: `${Math.min(convAgendToCalls, 100)}%` }} /></div>
-                </div>
-                <div className="fcs-divider" />
-                <div className="fcs-item">
-                  <div className="fcs-label">Calls → Vendas</div>
-                  <div className="fcs-val" style={{ color: "var(--success)" }}>{calls > 0 ? (convCallsToVendas >= 100 ? Math.round(convCallsToVendas) : convCallsToVendas.toFixed(2)) : "0"}%</div>
-                  <div className="fcs-detail">{sales} / {calls} calls</div>
-                  <div className="fcs-bar"><div className="fcs-fill" style={{ width: "100%", background: "var(--success)" }} /></div>
-                </div>
-                <div className="fcs-divider" />
-                <div className="fcs-item fcs-highlight">
-                  <div className="fcs-label">Leads → Vendas</div>
-                  <div className="fcs-val" style={{ color: "var(--hi)" }}>{convLeadsToVendas.toFixed(2)}%</div>
-                  <div className="fcs-detail">Conversão geral</div>
-                  <div className="fcs-bar"><div className="fcs-fill" style={{ width: `${Math.min(convLeadsToVendas, 100)}%`, minWidth: 3 }} /></div>
-                </div>
-              </div>
+              {funnelDisplayStages.length === 0 ? (
+                <div className="px-4 py-6 text-center text-[var(--text-dim)] text-sm">Selecione um pipeline e sincronize etapas.</div>
+              ) : (
+                <>
+                  {funnelDisplayStages.map((stage, idx) => {
+                    const prevCount = idx === 0 ? 0 : funnelDisplayStages[idx - 1].count;
+                    const lost = prevCount - stage.count;
+                    const lostPct = prevCount > 0 ? (lost / prevCount) * 100 : 0;
+                    const tx = prevCount > 0 ? (stage.count / prevCount) * 100 : 0;
+                    const barPct = funnelDisplayMax > 0 ? Math.max((stage.count / funnelDisplayMax) * 100, stage.count > 0 ? 2 : 0) : 0;
+                    const colors = ["var(--hi)", "var(--accent)", "var(--warning)", "var(--success)"];
+                    const color = colors[idx % colors.length];
+                    const colorDim = color === "var(--hi)" ? "var(--hi-dim)" : color === "var(--accent)" ? "var(--accent-dim)" : color === "var(--warning)" ? "var(--warning-muted)" : "var(--success-muted)";
+                    const isLast = idx === funnelDisplayStages.length - 1;
+                    return (
+                      <div key={stage.id} className="funnel-row" style={isLast ? { borderBottom: "none" } : undefined}>
+                        <div className="fcol-stage">
+                          <span className="frow-dot" style={{ background: color, boxShadow: `0 0 6px ${colorDim}` }} />
+                          <span className="frow-name">{stage.name}</span>
+                        </div>
+                        <div className="fcol-bar"><div className="frow-bar-track"><div className="frow-bar-fill" style={{ width: `${barPct}%`, background: `linear-gradient(90deg, ${colorDim}, ${color})` }} /></div></div>
+                        <div className="fcol-total"><span className="frow-num" style={{ color }}>{stage.count.toLocaleString("pt-BR")}</span></div>
+                        <div className="fcol-tx">{stage.isFirst ? <span className="frow-dash">—</span> : <span className={isLast ? "frow-tx-final" : "frow-tx"}>{tx.toFixed(2)}%</span>}</div>
+                        <div className="fcol-lost">
+                          {stage.isFirst ? <span className="frow-dash">—</span> : (
+                            <span className="frow-lost-val">
+                              {lostPct.toFixed(1)}%
+                              <span className="frow-lost-num">{lost.toLocaleString("pt-BR")}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="funnel-conv-strip">
+                    {funnelDisplayStages.length <= 1 ? (
+                      <div className="fcs-item fcs-highlight">
+                        <div className="fcs-label">Conversão</div>
+                        <div className="fcs-val" style={{ color: "var(--text-dim)" }}>—</div>
+                        <div className="fcs-detail">Duas ou mais etapas para ver conversões</div>
+                        <div className="fcs-bar"><div className="fcs-fill" style={{ width: "0%" }} /></div>
+                      </div>
+                    ) : (
+                      <>
+                        {funnelDisplayStages.slice(0, -1).map((stage, idx) => {
+                          const next = funnelDisplayStages[idx + 1];
+                          const conv = stage.count > 0 ? (next.count / stage.count) * 100 : 0;
+                          return (
+                            <div key={stage.id} className="fcs-item">
+                              <div className="fcs-label">{stage.name} → {next.name}</div>
+                              <div className="fcs-val">{conv.toFixed(2)}%</div>
+                              <div className="fcs-detail">{next.count} / {stage.count.toLocaleString("pt-BR")}</div>
+                              <div className="fcs-bar"><div className="fcs-fill" style={{ width: `${Math.min(conv, 100)}%` }} /></div>
+                            </div>
+                          );
+                        }).flatMap((el, i) => (i === 0 ? [el] : [<div key={`d-${i}`} className="fcs-divider" />, el]))}
+                        <div className="fcs-divider" />
+                        <div className="fcs-item fcs-highlight">
+                          <div className="fcs-label">{funnelDisplayStages[0].name} → {funnelDisplayStages[funnelDisplayStages.length - 1].name}</div>
+                          <div className="fcs-val" style={{ color: "var(--hi)" }}>
+                            {funnelDisplayStages[0].count > 0 ? ((funnelDisplayStages[funnelDisplayStages.length - 1].count / funnelDisplayStages[0].count) * 100).toFixed(2) : "0"}%
+                          </div>
+                          <div className="fcs-detail">Conversão geral</div>
+                          <div className="fcs-bar"><div className="fcs-fill" style={{ width: `${Math.min(funnelDisplayStages[0].count > 0 ? (funnelDisplayStages[funnelDisplayStages.length - 1].count / funnelDisplayStages[0].count) * 100 : 0, 100)}%`, minWidth: 3 }} /></div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -887,7 +1034,7 @@ export default function RelatorioClientePage() {
                   <div className="eff-row" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
                     <div className="eff-item"><div className="eff-lbl">ROAS (Fatur./Invest.)</div><div className={`eff-val ${roasTotal != null ? "green" : ""}`}>{roasTotal == null ? "—" : `${roasTotal.toFixed(2)}x`}</div></div>
                     <div className="eff-item"><div className="eff-lbl">ROAS Anúncios</div><div className={`eff-val ${roasAds != null ? "green" : ""}`}>{roasAds == null ? "—" : `${roasAds.toFixed(2)}x`}</div></div>
-                    <div className="eff-item"><div className="eff-lbl">Investimento</div><div className="eff-val" style={{ fontSize: "0.9rem" }}>{formatCurrency(invCurr)}</div></div>
+                    <div className="eff-item"><div className="eff-lbl">Investimento</div><div className="eff-val"><MoneyWithSmallCents value={invCurr} /></div></div>
                   </div>
                   <div className="eff-row" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
                     <div className="eff-item"><div className="eff-lbl">Custo por agendamento</div><div className="eff-val orange">{formatMaybeCurrency(cpAgendTotal)}</div></div>
@@ -931,8 +1078,8 @@ export default function RelatorioClientePage() {
                         funnelStagesWithCount.map((stage) => (
                           <tr key={stage.id}>
                             <td>{stage.name}</td>
-                            <td className="num">{stage.count.toLocaleString("pt-BR")}</td>
-                            <td className="rate">{funnelTotal > 0 ? ((stage.count / funnelTotal) * 100).toFixed(1) : "0"}%</td>
+                            <td className="num">{numOrDash(stage.count)}</td>
+                            <td className="rate">{funnelTotal > 0 && stage.count > 0 ? `${((stage.count / funnelTotal) * 100).toFixed(1)}%` : "—"}</td>
                           </tr>
                         ))
                       )}
@@ -1166,16 +1313,16 @@ export default function RelatorioClientePage() {
                     <tr key={row.month}>
                       {summaryCols.map((col) => {
                         if (col === "mes") return <td key={col} className="num">{formatDateDisplay(row.month)}</td>;
-                        if (col === "leads") return <td key={col}>{row.leads.toLocaleString("pt-BR")}</td>;
-                        if (col === "agend") return <td key={col}>{row.appointments}</td>;
-                        if (col === "vendas") return <td key={col} className="num">{row.sales}</td>;
-                        if (col === "fatur") return <td key={col} className="money">{formatCurrency(row.revenue)}</td>;
-                        if (col === "invest") return <td key={col} className="cost">{formatCurrency(row.investment)}</td>;
-                        if (col === "calls") return <td key={col} className="num">{row.callsRealized}</td>;
-                        if (col === "cpl") return <td key={col} className="rate">{row.leads > 0 ? formatCurrency(row.investment / row.leads) : "—"}</td>;
-                        if (col === "cpAgend") return <td key={col} className="cost">{row.appointments > 0 ? formatCurrency(row.investment / row.appointments) : "—"}</td>;
-                        if (col === "cpCall") return <td key={col} className="cost">{row.callsRealized > 0 ? formatCurrency(row.investment / row.callsRealized) : "—"}</td>;
-                        if (col === "cpa") return <td key={col} className="cost">{row.sales > 0 ? formatCurrency(row.investment / row.sales) : "—"}</td>;
+                        if (col === "leads") return <td key={col}>{numOrDash(row.leads)}</td>;
+                        if (col === "agend") return <td key={col}>{numOrDash(row.appointments)}</td>;
+                        if (col === "vendas") return <td key={col} className="num">{numOrDash(row.sales)}</td>;
+                        if (col === "fatur") return <td key={col} className="money"><MoneyWithSmallCents value={row.revenue} /></td>;
+                        if (col === "invest") return <td key={col} className="cost"><MoneyWithSmallCents value={row.investment} /></td>;
+                        if (col === "calls") return <td key={col} className="num">{numOrDash(row.callsRealized)}</td>;
+                        if (col === "cpl") return <td key={col} className="rate">{row.leads > 0 ? <MoneyWithSmallCents value={row.investment / row.leads} /> : "—"}</td>;
+                        if (col === "cpAgend") return <td key={col} className="cost">{row.appointments > 0 ? <MoneyWithSmallCents value={row.investment / row.appointments} /> : "—"}</td>;
+                        if (col === "cpCall") return <td key={col} className="cost">{row.callsRealized > 0 ? <MoneyWithSmallCents value={row.investment / row.callsRealized} /> : "—"}</td>;
+                        if (col === "cpa") return <td key={col} className="cost">{row.sales > 0 ? <MoneyWithSmallCents value={row.investment / row.sales} /> : "—"}</td>;
                         if (col === "roas") return <td key={col} className="rate">{row.investment > 0 ? `${(row.revenue / row.investment).toFixed(2)}x` : "—"}</td>;
                         return <td key={col}>—</td>;
                       })}
@@ -1194,117 +1341,102 @@ export default function RelatorioClientePage() {
         </div>
       </div>
 
-      {/* 3.6 Vendas por responsável — filtro por responsável + seleção de colunas */}
-      <div className="sec-label"><span>Vendas por responsável</span></div>
-      <div className="card">
-        <div className="tbl-bar">
-          <span className="tbl-title">Performance por responsável</span>
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative flex items-center gap-2" ref={filterResponsibleDropdownRef}>
-              <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-dim)]">Filtrar</span>
-              <button
-                type="button"
-                onClick={() => setFilterResponsibleDropdownOpen((o) => !o)}
-                className="rounded-lg border border-[var(--border)] bg-[var(--bg-raised)] px-2 py-1 text-xs text-[var(--text-primary)] min-w-[140px] text-left flex items-center justify-between gap-2"
-                aria-label="Filtrar por responsável (um ou mais)"
-                aria-expanded={filterResponsibleDropdownOpen}
-              >
-                <span className="truncate">
-                  {filterResponsible.length === 0
-                    ? "Todos"
-                    : filterResponsible.length === 1
-                      ? filterResponsible[0]
-                      : `${filterResponsible.length} selecionados`}
-                </span>
-                <span aria-hidden>{filterResponsibleDropdownOpen ? "▲" : "▼"}</span>
-              </button>
-              {filterResponsibleDropdownOpen && (
-                <div
-                  className="absolute top-full left-0 mt-1 z-10 rounded-lg border border-[var(--border)] bg-[var(--bg-raised)] shadow-lg py-2 max-h-[220px] overflow-y-auto min-w-[180px]"
-                  role="listbox"
-                  aria-multiselectable
-                >
-                  <label className="col-ck flex px-3 py-1.5 hover:bg-[var(--bg-hover)] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={filterResponsible.length === 0}
-                      onChange={() => {
-                        setFilterResponsible([]);
-                      }}
-                    />
-                    <span className="ml-2">Todos</span>
-                  </label>
-                  {extra?.byResponsible?.map((r) => (
-                    <label key={r.name} className="col-ck flex px-3 py-1.5 hover:bg-[var(--bg-hover)] cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={filterResponsible.includes(r.name)}
-                        onChange={() => {
-                          setFilterResponsible((prev) =>
-                            prev.includes(r.name)
-                              ? prev.filter((x) => x !== r.name)
-                              : [...prev, r.name]
-                          );
-                        }}
-                      />
-                      <span className="ml-2">{r.name}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
+      {/* Performance por responsável — grid de cards (sem card wrapper: só os cards têm fundo) */}
+      <div className="sec-label"><span>PERFORMANCE POR RESPONSÁVEL</span></div>
+      <div className="resp-section">
+        <div className="resp-card-header">
+          <span className="card-title">Performance por responsável</span>
+          <div className="resp-filter-wrap" ref={filterResponsibleDropdownRef}>
+            <span className="resp-filter-label">Filtrar</span>
             <button
               type="button"
-              className="tbl-cfg-btn"
-              onClick={() => setResponsibleColPanelOpen((o) => !o)}
-              aria-expanded={responsibleColPanelOpen}
+              onClick={() => setFilterResponsibleDropdownOpen((o) => !o)}
+              className="resp-filter-btn"
+              aria-expanded={filterResponsibleDropdownOpen}
+              aria-label="Filtrar por responsável"
             >
-              ⚙ Colunas
+              {filterResponsible.length === 0 ? "Todos" : filterResponsible.length === 1 ? filterResponsible[0] : `${filterResponsible.length} selecionados`}
+              <span style={{ color: "var(--text-dim)" }}>{filterResponsibleDropdownOpen ? "▲" : "▼"}</span>
             </button>
+            {filterResponsibleDropdownOpen && (
+              <div className="absolute top-full left-0 mt-1 z-10 rounded-lg border border-[var(--border)] bg-[var(--bg-raised)] shadow-lg py-2 max-h-[220px] overflow-y-auto min-w-[180px]">
+                <label className="col-ck flex px-3 py-1.5 hover:bg-[var(--bg-hover)] cursor-pointer">
+                  <input type="checkbox" checked={filterResponsible.length === 0} onChange={() => setFilterResponsible([])} />
+                  <span className="ml-2">Todos</span>
+                </label>
+                {extra?.byResponsible?.map((r) => (
+                  <label key={r.name} className="col-ck flex px-3 py-1.5 hover:bg-[var(--bg-hover)] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={filterResponsible.includes(r.name)}
+                      onChange={() => setFilterResponsible((prev) => (prev.includes(r.name) ? prev.filter((x) => x !== r.name) : [...prev, r.name]))}
+                    />
+                    <span className="ml-2">{r.name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-        <div className={`col-panel ${responsibleColPanelOpen ? "open" : ""}`} id="responsibleColPanel">
-          {RESPONSIBLE_COL_DEFS.map(({ id, label }) => (
-            <label key={id} className="col-ck">
-              <input
-                type="checkbox"
-                checked={responsibleCols.includes(id)}
-                onChange={() => toggleResponsibleCol(id)}
-                data-col={id}
-              />
-              <span>{label}</span>
-            </label>
-          ))}
-        </div>
-        <div className="tbl-overflow">
-          <table className="compact-table">
-            <thead>
-              <tr>
-                {responsibleCols.map((c) => (
-                  <th key={c}>{RESPONSIBLE_COL_DEFS.find((d) => d.id === c)?.label ?? c}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {extra?.byResponsible && extra.byResponsible.length > 0 ? (
-                (filterResponsible.length > 0 ? extra.byResponsible.filter((r) => filterResponsible.includes(r.name)) : extra.byResponsible).map((row) => (
-                  <tr key={row.name}>
-                    {responsibleCols.map((col) => {
-                      if (col === "responsavel") return <td key={col}>{row.name}</td>;
-                      if (col === "vendas") return <td key={col} className="num">{row.sales}</td>;
-                      if (col === "fatur") return <td key={col} className="money">{formatCurrency(row.revenue)}</td>;
-                      if (col === "tx") return <td key={col} className="rate">{row.conversionRate.toFixed(1)}%</td>;
-                      return null;
-                    })}
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={responsibleCols.length} className="text-center text-[var(--text-dim)]">Nenhum dado.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="resp-grid">
+          {(() => {
+            const list = !extra?.byResponsible?.length ? [] : filterResponsible.length > 0 ? extra.byResponsible.filter((r) => filterResponsible.includes(r.name)) : extra.byResponsible;
+            const totalOpp = (extra?.byResponsible ?? []).reduce((s, r) => s + r.opportunities, 0);
+            const sorted = [...list].sort((a, b) => b.sales - a.sales);
+            const withRank = sorted.map((r, i) => {
+              const hasSales = r.sales > 0;
+              const rank = hasSales && i === 0 ? 1 : hasSales && i === 1 ? 2 : null;
+              return { ...r, rank };
+            });
+            if (withRank.length === 0) {
+              return <div className="col-span-full py-6 text-center text-[var(--text-dim)] text-sm">Nenhum dado.</div>;
+            }
+            return withRank.map((r) => {
+              const pctTotal = totalOpp > 0 ? (r.opportunities / totalOpp) * 100 : 0;
+              const convVal = r.opportunities > 0 ? r.conversionRate : null;
+              return (
+                <div
+                  key={r.name}
+                  className={`resp-card ${r.sales > 0 ? "has-sales" : ""} ${r.rank === 1 ? "rank-1" : ""} ${r.rank === 2 ? "rank-2" : ""}`}
+                >
+                  <div className="resp-head">
+                    <span className="resp-rank">{r.rank === 1 ? "#1" : r.rank === 2 ? "#2" : "—"}</span>
+                    <div className="resp-avatar" style={r.name === "Não atribuído" ? { fontSize: "13px" } : undefined}>{getInitials(r.name)}</div>
+                    <div className="resp-info">
+                      <div className="resp-name">{r.name}</div>
+                      <div className="resp-role">—</div>
+                    </div>
+                  </div>
+                  <div className="resp-metrics">
+                    <div className="resp-metric">
+                      <span className="rm-label">Oport.</span>
+                      <span className="rm-val" style={{ color: "var(--text-primary)" }}>{r.opportunities}</span>
+                    </div>
+                    <div className="resp-metric">
+                      <span className="rm-label">Calls</span>
+                      <span className="rm-val dim">—</span>
+                    </div>
+                    <div className="resp-metric">
+                      <span className="rm-label">Vendas</span>
+                      <span className={`rm-val ${r.rank === 1 ? "" : r.rank === 2 ? "" : "dim"}`} style={r.sales > 0 ? (r.rank === 1 ? { color: "var(--danger)" } : r.rank === 2 ? { color: "var(--accent)" } : { color: "var(--text-primary)" }) : undefined}>{r.sales > 0 ? r.sales : "—"}</span>
+                    </div>
+                    <div className="resp-metric conv-metric">
+                      <span className="rm-label">Tx. conv.</span>
+                      <span className={`rm-val ${r.rank === 1 ? "conv-rank1" : r.rank === 2 ? "conv-rank2" : "dim"}`}>{convVal != null ? (r.rank === 1 ? "★ " : "") + convVal.toFixed(1) + "%" : "—"}</span>
+                      <span className="rm-sub">vendas / oport.</span>
+                    </div>
+                  </div>
+                  <div className="resp-oport">
+                    <div className="resp-oport-meta">
+                      <span className="resp-oport-label">% das oportunidades totais</span>
+                      <span className="resp-oport-nums">{r.opportunities} <span>/ {totalOpp.toLocaleString("pt-BR")} · {pctTotal.toFixed(1)}%</span></span>
+                    </div>
+                    <div className="resp-track"><div className="resp-fill" style={{ width: `${Math.min(pctTotal, 100)}%` }} /></div>
+                  </div>
+                </div>
+              );
+            });
+          })()}
         </div>
       </div>
 
@@ -1354,12 +1486,12 @@ export default function RelatorioClientePage() {
                   <tr key={row.name}>
                     {utmCols.map((col) => {
                       if (col === "name") return <td key={col} className="truncate max-w-[120px]" title={row.name}>{row.name || "—"}</td>;
-                      if (col === "leads") return <td key={col} className="rate">{row.leads}</td>;
-                      if (col === "vendas") return <td key={col} className="num">{row.sales}</td>;
-                      if (col === "fatur") return <td key={col} className="money">{formatCurrency(row.revenue)}</td>;
-                      if (col === "invest") return <td key={col} className="money">{formatCurrency(row.investment ?? 0)}</td>;
-                      if (col === "agend") return <td key={col} className="num">{row.appointments ?? 0}</td>;
-                      if (col === "calls") return <td key={col} className="num">{row.callsRealized ?? 0}</td>;
+                      if (col === "leads") return <td key={col} className="rate">{numOrDash(row.leads)}</td>;
+                      if (col === "vendas") return <td key={col} className="num">{numOrDash(row.sales)}</td>;
+                      if (col === "fatur") return <td key={col} className="money"><MoneyWithSmallCents value={row.revenue} /></td>;
+                      if (col === "invest") return <td key={col} className="money"><MoneyWithSmallCents value={row.investment ?? 0} /></td>;
+                      if (col === "agend") return <td key={col} className="num">{numOrDash(row.appointments ?? 0)}</td>;
+                      if (col === "calls") return <td key={col} className="num">{numOrDash(row.callsRealized ?? 0)}</td>;
                       return null;
                     })}
                   </tr>
@@ -1414,12 +1546,12 @@ export default function RelatorioClientePage() {
                   <tr key={row.name}>
                     {utmCols.map((col) => {
                       if (col === "name") return <td key={col} className="truncate max-w-[120px]" title={row.name}>{row.name || "—"}</td>;
-                      if (col === "leads") return <td key={col} className="rate">{row.leads}</td>;
-                      if (col === "vendas") return <td key={col} className="num">{row.sales}</td>;
-                      if (col === "fatur") return <td key={col} className="money">{formatCurrency(row.revenue)}</td>;
-                      if (col === "invest") return <td key={col} className="money">{formatCurrency(row.investment ?? 0)}</td>;
-                      if (col === "agend") return <td key={col} className="num">{row.appointments ?? 0}</td>;
-                      if (col === "calls") return <td key={col} className="num">{row.callsRealized ?? 0}</td>;
+                      if (col === "leads") return <td key={col} className="rate">{numOrDash(row.leads)}</td>;
+                      if (col === "vendas") return <td key={col} className="num">{numOrDash(row.sales)}</td>;
+                      if (col === "fatur") return <td key={col} className="money"><MoneyWithSmallCents value={row.revenue} /></td>;
+                      if (col === "invest") return <td key={col} className="money"><MoneyWithSmallCents value={row.investment ?? 0} /></td>;
+                      if (col === "agend") return <td key={col} className="num">{numOrDash(row.appointments ?? 0)}</td>;
+                      if (col === "calls") return <td key={col} className="num">{numOrDash(row.callsRealized ?? 0)}</td>;
                       return null;
                     })}
                   </tr>
@@ -1474,12 +1606,12 @@ export default function RelatorioClientePage() {
                   <tr key={row.name}>
                     {utmCols.map((col) => {
                       if (col === "name") return <td key={col} className="truncate max-w-[120px]" title={row.name}>{row.name || "—"}</td>;
-                      if (col === "leads") return <td key={col} className="rate">{row.leads}</td>;
-                      if (col === "vendas") return <td key={col} className="num">{row.sales}</td>;
-                      if (col === "fatur") return <td key={col} className="money">{formatCurrency(row.revenue)}</td>;
-                      if (col === "invest") return <td key={col} className="money">{formatCurrency(row.investment ?? 0)}</td>;
-                      if (col === "agend") return <td key={col} className="num">{row.appointments ?? 0}</td>;
-                      if (col === "calls") return <td key={col} className="num">{row.callsRealized ?? 0}</td>;
+                      if (col === "leads") return <td key={col} className="rate">{numOrDash(row.leads)}</td>;
+                      if (col === "vendas") return <td key={col} className="num">{numOrDash(row.sales)}</td>;
+                      if (col === "fatur") return <td key={col} className="money"><MoneyWithSmallCents value={row.revenue} /></td>;
+                      if (col === "invest") return <td key={col} className="money"><MoneyWithSmallCents value={row.investment ?? 0} /></td>;
+                      if (col === "agend") return <td key={col} className="num">{numOrDash(row.appointments ?? 0)}</td>;
+                      if (col === "calls") return <td key={col} className="num">{numOrDash(row.callsRealized ?? 0)}</td>;
                       return null;
                     })}
                   </tr>
@@ -1543,10 +1675,10 @@ export default function RelatorioClientePage() {
                   <tr key={row.source}>
                     {origemCols.map((col) => {
                       if (col === "origem") return <td key={col}>{row.source}</td>;
-                      if (col === "oportunidades") return <td key={col} className="num">{row.opportunities}</td>;
-                      if (col === "vendas") return <td key={col} className="num">{row.sales}</td>;
-                      if (col === "fatur") return <td key={col} className="money">{formatCurrency(row.revenue)}</td>;
-                      if (col === "conversao") return <td key={col} className="rate">{row.conversion.toFixed(1)}%</td>;
+                      if (col === "oportunidades") return <td key={col} className="num">{numOrDash(row.opportunities)}</td>;
+                      if (col === "vendas") return <td key={col} className="num">{numOrDash(row.sales)}</td>;
+                      if (col === "fatur") return <td key={col} className="money"><MoneyWithSmallCents value={row.revenue} /></td>;
+                      if (col === "conversao") return <td key={col} className="rate">{rateOrDash(row.conversion)}</td>;
                       return null;
                     })}
                   </tr>
@@ -1561,100 +1693,166 @@ export default function RelatorioClientePage() {
         </div>
       </div>
 
-      {/* Análise cruzada — múltiplas dimensões (origem, responsável, UTMs, campos personalizados) */}
-      {(extra?.crossMatrix || extra?.crossSourceResponsible) && (extra?.crossMatrix ? (extra.crossMatrix.rowLabels.length > 0 || extra.crossMatrix.colLabels.length > 0) : (extra.crossSourceResponsible!.sources.length > 0 || extra.crossSourceResponsible!.responsibles.length > 0)) && (
+      {/* Análise de campos personalizados — dividir por campo */}
+      {extra?.splitByField && extra.splitByField.length > 0 && (
         <>
-          <div className="sec-label"><span>Análise cruzada</span></div>
-          <div className="card">
-            <div className="card-header">
-              <span className="card-title">
-                {extra?.availableDimensions?.find((d) => d.id === crossRowDim)?.label ?? "Linhas"} × {extra?.availableDimensions?.find((d) => d.id === crossColDim)?.label ?? "Colunas"}
-              </span>
-              <div className="cross-controls flex flex-wrap items-center gap-3">
-                <div className="cross-sel-wrap">
-                  <span className="cross-lbl">Linhas</span>
-                  <select
-                    value={crossRowDim}
-                    onChange={(e) => setCrossRowDim(e.target.value)}
-                    className="cross-sel"
-                    aria-label="Dimensão das linhas"
-                  >
-                    {extra?.availableDimensions?.map((d) => (
-                      <option key={d.id} value={d.id}>{d.label}</option>
-                    ))}
-                    {(!extra?.availableDimensions || extra.availableDimensions.length === 0) && (
-                      <>
-                        <option value="source">Origem</option>
-                        <option value="responsible">Responsável</option>
-                      </>
-                    )}
-                  </select>
-                </div>
-                <div className="cross-sel-wrap">
-                  <span className="cross-lbl">Colunas</span>
-                  <select
-                    value={crossColDim}
-                    onChange={(e) => setCrossColDim(e.target.value)}
-                    className="cross-sel"
-                    aria-label="Dimensão das colunas"
-                  >
-                    {extra?.availableDimensions?.map((d) => (
-                      <option key={d.id} value={d.id}>{d.label}</option>
-                    ))}
-                    {(!extra?.availableDimensions || extra.availableDimensions.length === 0) && (
-                      <>
-                        <option value="source">Origem</option>
-                        <option value="responsible">Responsável</option>
-                      </>
-                    )}
-                  </select>
-                </div>
-                <div className="cross-sel-wrap">
-                  <span className="cross-lbl">Métrica</span>
-                  <select
-                    value={crossMetric}
-                    onChange={(e) => setCrossMetric(e.target.value as "leads" | "sales")}
-                    className="cross-met-sel"
-                    aria-label="Métrica"
-                  >
-                    <option value="leads">Leads / Oportunidades</option>
-                    <option value="sales">Vendas</option>
-                  </select>
-                </div>
-              </div>
+          <div className="sec-label"><span>Análise de campos personalizados</span></div>
+          {splitSelectedFilter && (
+            <div className="split-filter-chip">
+              <span className="split-filter-label">Filtro:</span>
+              <span className="split-filter-value">{splitSelectedFilter.label} = {splitSelectedFilter.value}</span>
+              <button
+                type="button"
+                onClick={() => setSplitSelectedFilter(null)}
+                className="split-filter-clear"
+                aria-label="Limpar filtro"
+              >
+                Limpar
+              </button>
             </div>
-            <div className="tbl-overflow">
-              <table className="compact-table">
-                <thead>
-                  <tr>
-                    <th>{extra?.availableDimensions?.find((d) => d.id === crossRowDim)?.label ?? (crossRowDim === "source" ? "Origem" : "Responsável")}</th>
-                    {(extra?.crossMatrix ? extra.crossMatrix.colLabels : (crossColDim === "source" ? extra!.crossSourceResponsible!.sources : extra!.crossSourceResponsible!.responsibles)).map((h: string) => (
-                      <th key={h} className="text-right">{h}</th>
-                    ))}
-                    <th className="text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(extra?.crossMatrix ? extra.crossMatrix.rowLabels : (crossRowDim === "source" ? extra!.crossSourceResponsible!.sources : extra!.crossSourceResponsible!.responsibles)).map((rowName: string, ri: number) => {
-                    const values = extra?.crossMatrix
-                      ? extra.crossMatrix.colLabels.map((_, ci) => (crossMetric === "leads" ? extra.crossMatrix!.leads[ri]?.[ci] ?? 0 : extra.crossMatrix!.sales[ri]?.[ci] ?? 0))
-                      : crossRowDim === "source"
-                        ? extra!.crossSourceResponsible!.responsibles.map((_, ci) => (crossMetric === "leads" ? extra!.crossSourceResponsible!.leads[ri]?.[ci] ?? 0 : extra!.crossSourceResponsible!.sales[ri]?.[ci] ?? 0))
-                        : extra!.crossSourceResponsible!.sources.map((_, ci) => (crossMetric === "leads" ? extra!.crossSourceResponsible!.leads[ci]?.[ri] ?? 0 : extra!.crossSourceResponsible!.sales[ci]?.[ri] ?? 0));
-                    const total = values.reduce((a: number, b: number) => a + b, 0);
-                    return (
-                      <tr key={rowName}>
-                        <td className="font-semibold">{rowName}</td>
-                        {values.map((v: number, i: number) => (
-                          <td key={i} className="num text-right">{v}</td>
+          )}
+          <div className="two-panels">
+            {extra.splitByField
+              .filter((panel) => panel.dimId !== "revenue_range")
+              .map((panel) => {
+              const isRevenueRange = false;
+              const badge = isRevenueRange ? "campo GHL" : `${panel.totalOpportunities.toLocaleString("pt-BR")} oport.`;
+              const colors = ["var(--accent)", "var(--hi)", "var(--blue)", "var(--danger)"];
+              const sortState = splitSortByPanel[panel.dimId] ?? { key: "revenue", dir: "desc" as const };
+              const getSortVal = (row: typeof panel.rows[0]) => {
+                const v = row[sortState.key as keyof typeof row];
+                if (typeof v === "string") return v.toLowerCase();
+                return Number(v) ?? 0;
+              };
+              const sortedRows = [...panel.rows].sort((a, b) => {
+                const va = getSortVal(a);
+                const vb = getSortVal(b);
+                const cmp = typeof va === "string" ? (va as string).localeCompare(vb as string) : (va as number) - (vb as number);
+                return sortState.dir === "desc" ? -cmp : cmp;
+              });
+              const totalRows = sortedRows.length;
+              const totalPages = Math.max(1, Math.ceil(totalRows / SPLIT_PAGE_SIZE));
+              const page = Math.min(splitPageByPanel[panel.dimId] ?? 0, totalPages - 1);
+              const pageStart = page * SPLIT_PAGE_SIZE;
+              const pageRows = sortedRows.slice(pageStart, pageStart + SPLIT_PAGE_SIZE);
+
+              return (
+                <div key={panel.dimId} className="panel split-panel">
+                  <div className="panel-header split-panel-header">
+                    <div className="split-panel-title-row">
+                      <span className="panel-title">Por {panel.label.toLowerCase()}</span>
+                      <span className={`panel-badge ${isRevenueRange ? "badge-purple" : "badge-teal"}`}>{badge}</span>
+                    </div>
+                    <div className="split-sort-in-panel">
+                      <select
+                        value={sortState.key}
+                        onChange={(e) => {
+                          setSplitSortByPanel((p) => ({ ...p, [panel.dimId]: { ...sortState, key: e.target.value } }));
+                          setSplitPageByPanel((p) => ({ ...p, [panel.dimId]: 0 }));
+                        }}
+                        className="split-sort-select"
+                        aria-label={`Ordenar por (${panel.label})`}
+                      >
+                        {SPLIT_SORT_OPTIONS.map((o) => (
+                          <option key={o.id} value={o.id}>{o.label}</option>
                         ))}
-                        <td className="num text-right font-semibold">{total}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setSplitSortByPanel((p) => ({ ...p, [panel.dimId]: { ...sortState, dir: sortState.dir === "asc" ? "desc" : "asc" } }))}
+                        className="split-sort-dir"
+                        title={sortState.dir === "desc" ? "Decrescente" : "Crescente"}
+                        aria-label={sortState.dir === "desc" ? "Decrescente" : "Crescente"}
+                      >
+                        {sortState.dir === "desc" ? "↓" : "↑"}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="row-list">
+                    {pageRows.map((row, idx) => {
+                      const hasData = row.revenue > 0 || row.sales > 0;
+                      const color = hasData ? colors[idx % colors.length] : "var(--text-dim)";
+                      const colorDim = color === "var(--accent)" ? "var(--accent-dim)" : color === "var(--hi)" ? "var(--hi-dim)" : color === "var(--blue)" ? "rgba(79,110,247,0.1)" : "var(--danger-muted)";
+                      const tagPct = panel.totalOpportunities > 0 && !isRevenueRange ? (row.opportunities / panel.totalOpportunities) * 100 : (row.sales > 0 && panel.rows.some((r) => r.sales > 0) ? (row.sales / panel.rows.filter((r) => r.sales > 0).reduce((s, r) => s + r.sales, 0)) * 100 : 0);
+                      const tagLabel = isRevenueRange ? `${row.sales} vendas · ${row.pctRevenue.toFixed(1)}%` : `${row.opportunities} leads · ${tagPct.toFixed(1)}%`;
+                      const isSelectedFilter = splitSelectedFilter?.dimId === panel.dimId && splitSelectedFilter?.value === row.value;
+                      return (
+                        <div
+                          key={`${row.value}-${pageStart + idx}`}
+                          className={`data-row split-data-row ${isSelectedFilter ? "split-data-row-selected" : ""}`}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => {
+                            if (isSelectedFilter) setSplitSelectedFilter(null);
+                            else setSplitSelectedFilter({ dimId: panel.dimId, value: row.value, label: panel.label });
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              if (isSelectedFilter) setSplitSelectedFilter(null);
+                              else setSplitSelectedFilter({ dimId: panel.dimId, value: row.value, label: panel.label });
+                            }
+                          }}
+                          aria-pressed={isSelectedFilter}
+                          aria-label={isSelectedFilter ? `Filtrar por ${row.value} (clique para desmarcar)` : `Filtrar por ${row.value}`}
+                        >
+                          <div className="row-top">
+                            <span className={`row-name ${!hasData ? "muted" : ""}`}>{row.value}</span>
+                            <span className="row-tag" style={{ background: hasData ? colorDim : "transparent", color, border: `1px solid ${hasData ? color : "var(--border)"}` }}>{tagLabel}</span>
+                          </div>
+                          <div className="row-bar-track">
+                            <div className="row-bar-fill" style={{ width: `${Math.min(row.pctRevenue, 100)}%`, background: hasData ? `linear-gradient(90deg,${colorDim},${color})` : "rgba(255,255,255,0.04)" }} />
+                          </div>
+                          <div className="row-chips">
+                            <div className="chip">
+                              <span className="chip-label">Agend.</span>
+                              <span className="chip-val" style={row.appointments > 0 ? { color: "var(--text-primary)" } : undefined}>{row.appointments > 0 ? row.appointments : "—"}</span>
+                            </div>
+                            <div className="chip">
+                              <span className="chip-label">Calls</span>
+                              <span className="chip-val" style={row.callsRealized > 0 ? { color: "var(--text-primary)" } : undefined}>{row.callsRealized > 0 ? row.callsRealized : "—"}</span>
+                            </div>
+                            <div className="chip">
+                              <span className="chip-label">Vendas</span>
+                              <span className="chip-val" style={row.sales > 0 ? { color } : undefined}>{row.sales > 0 ? row.sales : "—"}</span>
+                            </div>
+                            <div className="chip">
+                              <span className="chip-label">Faturamento</span>
+                              <span className={`chip-val ${row.revenue > 0 ? "" : "dim"}`} style={row.revenue > 0 ? { color } : undefined}>{row.revenue > 0 ? <MoneyWithSmallCents value={row.revenue} /> : "—"}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {totalPages > 1 && (
+                    <div className="split-pagination">
+                      <button
+                        type="button"
+                        disabled={page === 0}
+                        onClick={() => setSplitPageByPanel((p) => ({ ...p, [panel.dimId]: page - 1 }))}
+                        className="split-pagination-btn"
+                        aria-label="Página anterior"
+                      >
+                        Anterior
+                      </button>
+                      <span className="split-pagination-info">
+                        {page + 1} / {totalPages} <span className="split-pagination-total">({totalRows} itens)</span>
+                      </span>
+                      <button
+                        type="button"
+                        disabled={page >= totalPages - 1}
+                        onClick={() => setSplitPageByPanel((p) => ({ ...p, [panel.dimId]: page + 1 }))}
+                        className="split-pagination-btn"
+                        aria-label="Próxima página"
+                      >
+                        Próxima
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </>
       )}
