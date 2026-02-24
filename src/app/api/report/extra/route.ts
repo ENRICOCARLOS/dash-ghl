@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
       sessionId: "d41e01",
       location: "report/extra/route.ts:GET:entry",
       message: "report/extra GET entry",
-      data: { row_dim: request.nextUrl.searchParams.get("row_dim"), col_dim: request.nextUrl.searchParams.get("col_dim") },
+      data: {},
       timestamp: Date.now(),
       hypothesisId: "H1",
     }),
@@ -55,8 +55,6 @@ export async function GET(request: NextRequest) {
   const pipelineIds = pipelineIdsParam ? pipelineIdsParam.split(",").map((s) => s.trim()).filter(Boolean) : [];
   const sourcesParam = searchParams.get("sources");
   const sourcesFilter = sourcesParam ? sourcesParam.split(",").map((s) => s.trim()).filter(Boolean) : [];
-  const rowDim = searchParams.get("row_dim")?.trim() || "source";
-  const colDim = searchParams.get("col_dim")?.trim() || "responsible";
   /** Ano opcional: quando informado, o resumo mensal usa apenas o ano (1 jan - 31 dez), ignorando o período start/end. */
   const yearParam = searchParams.get("year");
   const yearForMonthly = yearParam != null && yearParam !== "" ? Number(yearParam) : null;
@@ -66,6 +64,10 @@ export async function GET(request: NextRequest) {
   const yearEndMs = yearForMonthly != null && Number.isFinite(yearForMonthly)
     ? new Date(yearForMonthly, 11, 31, 23, 59, 59, 999).getTime()
     : null;
+  /** Filtro para splitByField: só oportunidades/eventos que tenham este valor neste campo (filtra as demais tabelas ao clicar em um card). */
+  const splitFilterDim = searchParams.get("split_filter_dim")?.trim() || null;
+  const splitFilterValueParam = searchParams.get("split_filter_value");
+  const splitFilterValue = splitFilterDim && splitFilterValueParam !== null ? String(splitFilterValueParam) : null;
 
   const cred = await getGhlCredentials(request, clientId);
   if ("error" in cred) return NextResponse.json({ error: cred.error }, { status: cred.status });
@@ -196,9 +198,10 @@ export async function GET(request: NextRequest) {
     }
     // #endregion
     if (oppErr) break;
-    if (!page?.length) break;
-    oppRows.push(...(page as OppRow[]));
-    if (page.length < OPP_PAGE) break;
+    const pageData: unknown = page;
+    if (!Array.isArray(pageData) || pageData.length === 0) break;
+    oppRows.push(...(pageData as OppRow[]));
+    if (pageData.length < OPP_PAGE) break;
     oppOffset += OPP_PAGE;
   }
 
@@ -223,6 +226,27 @@ export async function GET(request: NextRequest) {
     .eq("client_id", cred.client_id)
     .gte("date", startDate.toISOString().slice(0, 10))
     .lte("date", endDate.toISOString().slice(0, 10));
+
+  /** Spend por nome (Campanha ↔ utm_campaign, Conjunto ↔ utm_medium, Criativo ↔ utm_content) para investimento por UTM. */
+  const { data: spendByMetaRows } = await service
+    .from("facebook_ads_daily_insights")
+    .select("campaign_name, adset_name, ad_name, spend")
+    .eq("client_id", cred.client_id)
+    .gte("date", startDate.toISOString().slice(0, 10))
+    .lte("date", endDate.toISOString().slice(0, 10));
+
+  const spendByCampaignName = new Map<string, number>();
+  const spendByAdsetName = new Map<string, number>();
+  const spendByAdName = new Map<string, number>();
+  for (const r of spendByMetaRows ?? []) {
+    const spend = Number((r as { spend?: unknown }).spend ?? 0) || 0;
+    const camp = String((r as { campaign_name?: string }).campaign_name ?? "").trim() || "—";
+    const adset = String((r as { adset_name?: string }).adset_name ?? "").trim() || "—";
+    const ad = String((r as { ad_name?: string }).ad_name ?? "").trim() || "—";
+    spendByCampaignName.set(camp, (spendByCampaignName.get(camp) ?? 0) + spend);
+    spendByAdsetName.set(adset, (spendByAdsetName.get(adset) ?? 0) + spend);
+    spendByAdName.set(ad, (spendByAdName.get(ad) ?? 0) + spend);
+  }
 
   /** Para resumo mensal: quando year é informado, buscar spend do ano inteiro. */
   let spendRowsForMonthly: { date: string; spend: number }[] = [];
@@ -262,7 +286,7 @@ export async function GET(request: NextRequest) {
   for (const e of events) {
     const ms = toMs(e.start_time);
     if (!inRange(ms, startMs, endMs)) continue;
-    const k = key(new Date(ms));
+    const k = key(new Date(ms!));
     const cur = seriesMap.get(k) ?? { leads: 0, appointments: 0, sales: 0, investment: 0 };
     cur.appointments += 1;
     seriesMap.set(k, cur);
@@ -299,7 +323,7 @@ export async function GET(request: NextRequest) {
   for (const e of events) {
     const ms = toMs(e.start_time);
     if (!inRange(ms, monthlyStart, monthlyEnd)) continue;
-    const m = monthKey(new Date(ms));
+    const m = monthKey(new Date(ms!));
     const cur = monthlyMap.get(m) ?? emptyMonth();
     cur.appointments += 1;
     if (String(e.status ?? "").toLowerCase() === "showed") cur.callsRealized += 1;
@@ -355,7 +379,8 @@ export async function GET(request: NextRequest) {
 
   type UtmRow = { leads: number; sales: number; revenue: number; investment: number; appointments: number; callsRealized: number };
   const utmAgg = (
-    getKey: (o: { utm_campaign: string | null; utm_medium: string | null; utm_content: string | null }) => string
+    getKey: (o: { utm_campaign: string | null; utm_medium: string | null; utm_content: string | null }) => string,
+    getSpendByUtmName?: (name: string) => number
   ) => {
     const map = new Map<string, UtmRow>();
     const empty = (): UtmRow => ({ leads: 0, sales: 0, revenue: 0, investment: 0, appointments: 0, callsRealized: 0 });
@@ -382,13 +407,16 @@ export async function GET(request: NextRequest) {
       if (String(e.status ?? "").toLowerCase() === "showed") cur.callsRealized += 1;
       map.set(k, cur);
     }
+    if (getSpendByUtmName) {
+      for (const [name, row] of map) row.investment += getSpendByUtmName(name) ?? 0;
+    }
     return Array.from(map.entries())
       .map(([name, v]) => ({ name, ...v }))
       .sort((a, b) => b.leads - a.leads);
   };
-  const utmCampaign = utmAgg((o) => o.utm_campaign ?? "");
-  const utmMedium = utmAgg((o) => o.utm_medium ?? "");
-  const utmContent = utmAgg((o) => o.utm_content ?? "");
+  const utmCampaign = utmAgg((o) => (o.utm_campaign ?? "").trim() || "—", (name) => spendByCampaignName.get(name) ?? 0);
+  const utmMedium = utmAgg((o) => (o.utm_medium ?? "").trim() || "—", (name) => spendByAdsetName.get(name) ?? 0);
+  const utmContent = utmAgg((o) => (o.utm_content ?? "").trim() || "—", (name) => spendByAdName.get(name) ?? 0);
 
   const sourceMap = new Map<string, { opportunities: number; sales: number; revenue: number }>();
   for (const o of opportunities) {
@@ -436,15 +464,6 @@ export async function GET(request: NextRequest) {
     revenue: faixaMap.get(f.key)?.revenue ?? 0,
   })).filter((r) => r.count > 0 || r.revenue > 0);
 
-  const availableDimensions: { id: string; label: string }[] = [
-    { id: "source", label: "Origem" },
-    { id: "responsible", label: "Responsável" },
-    { id: "utm_campaign", label: "UTM Campaign" },
-    { id: "utm_medium", label: "UTM Medium" },
-    { id: "utm_content", label: "UTM Content" },
-    ...customDimensions.map((d) => ({ id: d.col, label: d.name })),
-  ];
-
   /** Valor normalizado para agrupamento: trim + "—" quando vazio, para evitar linhas/colunas duplicadas. */
   const getDimValue = (o: OppRow, dimId: string): string => {
     const empty = "—";
@@ -475,56 +494,97 @@ export async function GET(request: NextRequest) {
     }
   };
 
-  const sourceSet = new Set<string>();
-  const respSet = new Set<string>();
-  const crossMap = new Map<string, { leads: number; sales: number }>();
-  const crossGenericMap = new Map<string, Map<string, { leads: number; sales: number }>>();
-  for (const o of opportunities) {
-    const ms = getOppDateMs(o);
-    if (!inRange(ms, startMs, endMs)) continue;
-    const src = o.source ?? "—";
-    const resp = resolveResponsible(o.assigned_to);
-    sourceSet.add(src);
-    respSet.add(resp);
-    const k = `${src}\0${resp}`;
-    const cur = crossMap.get(k) ?? { leads: 0, sales: 0 };
-    cur.leads += 1;
-    if (o.status === STATUS_WON && hasSaleDate(o)) cur.sales += 1;
-    crossMap.set(k, cur);
+  /** splitByField: agregação por campo personalizado (e faixa de faturamento) para a visualização "dividir por campo". Com filtro (split_filter_dim/value), só considera oportunidades/eventos que tenham esse valor nesse campo. */
+  type SplitRow = { value: string; opportunities: number; sales: number; revenue: number; appointments: number; callsRealized: number; pctOpportunities: number; pctRevenue: number };
+  const oppsForSplit =
+    splitFilterDim && splitFilterValue !== null
+      ? opportunities.filter(
+          (o) => inRange(getOppDateMs(o), startMs, endMs) && getDimValue(o, splitFilterDim) === splitFilterValue
+        )
+      : opportunities.filter((o) => inRange(getOppDateMs(o), startMs, endMs));
+  const contactIdsForSplit = new Set<string>(oppsForSplit.map((o) => o.contact_id ?? "").filter(Boolean));
+  const oppsInRangeForSplit = [...oppsForSplit].sort((a, b) => (getOppDateMs(a) ?? 0) - (getOppDateMs(b) ?? 0));
 
-    const rowKey = getDimValue(o, rowDim);
-    const colKey = getDimValue(o, colDim);
-    let rowMap = crossGenericMap.get(rowKey);
-    if (!rowMap) {
-      rowMap = new Map();
-      crossGenericMap.set(rowKey, rowMap);
+  const totalRevenueAll = oppsForSplit
+    .filter((o) => o.status === STATUS_WON && hasSaleDate(o))
+    .reduce((s, o) => s + Number(o.monetary_value ?? 0), 0);
+  const totalOppAll = oppsForSplit.length;
+
+  const splitByFieldPanels: { dimId: string; label: string; totalOpportunities: number; totalRevenue: number; rows: SplitRow[] }[] = [];
+
+  for (const d of customDimensions) {
+    const dimCol = d.col;
+    const contactToValue = new Map<string, string>();
+    for (const o of oppsInRangeForSplit) {
+      const cid = o.contact_id ?? "";
+      if (!cid || contactToValue.has(cid)) continue;
+      contactToValue.set(cid, getDimValue(o, dimCol));
     }
-    const cell = rowMap.get(colKey) ?? { leads: 0, sales: 0 };
-    cell.leads += 1;
-    if (o.status === STATUS_WON && hasSaleDate(o)) cell.sales += 1;
-    rowMap.set(colKey, cell);
+    const map = new Map<string, { opportunities: number; sales: number; revenue: number; appointments: number; callsRealized: number }>();
+    const empty = () => ({ opportunities: 0, sales: 0, revenue: 0, appointments: 0, callsRealized: 0 });
+    for (const o of oppsForSplit) {
+      const v = getDimValue(o, dimCol);
+      const cur = map.get(v) ?? empty();
+      cur.opportunities += 1;
+      if (o.status === STATUS_WON && hasSaleDate(o)) {
+        cur.sales += 1;
+        cur.revenue += Number(o.monetary_value ?? 0);
+      }
+      map.set(v, cur);
+    }
+    for (const e of events) {
+      const ms = toMs(e.start_time);
+      if (!inRange(ms, startMs, endMs)) continue;
+      if (e.contact_id && !contactIdsForSplit.has(e.contact_id)) continue;
+      const v = e.contact_id ? contactToValue.get(e.contact_id) : null;
+      if (!v || !map.has(v)) continue;
+      const cur = map.get(v)!;
+      cur.appointments += 1;
+      if (String(e.status ?? "").toLowerCase() === "showed") cur.callsRealized += 1;
+    }
+    const rows: SplitRow[] = Array.from(map.entries())
+      .map(([value, r]) => ({
+        value,
+        opportunities: r.opportunities,
+        sales: r.sales,
+        revenue: r.revenue,
+        appointments: r.appointments,
+        callsRealized: r.callsRealized,
+        pctOpportunities: totalOppAll > 0 ? (r.opportunities / totalOppAll) * 100 : 0,
+        pctRevenue: totalRevenueAll > 0 ? (r.revenue / totalRevenueAll) * 100 : 0,
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+    splitByFieldPanels.push({
+      dimId: dimCol,
+      label: d.name,
+      totalOpportunities: totalOppAll,
+      totalRevenue: totalRevenueAll,
+      rows,
+    });
   }
-  const crossSources = Array.from(sourceSet).sort();
-  const crossResponsibles = Array.from(respSet).sort();
-  const crossLeads = crossSources.map((src) =>
-    crossResponsibles.map((resp) => crossMap.get(`${src}\0${resp}`)?.leads ?? 0)
-  );
-  const crossSales = crossSources.map((src) =>
-    crossResponsibles.map((resp) => crossMap.get(`${src}\0${resp}`)?.sales ?? 0)
-  );
 
-  const crossRowLabels = Array.from(crossGenericMap.keys()).sort();
-  const crossColLabelSet = new Set<string>();
-  for (const rowMap of crossGenericMap.values()) {
-    for (const colKey of rowMap.keys()) crossColLabelSet.add(colKey);
-  }
-  const crossColLabels = Array.from(crossColLabelSet).sort();
-  const crossMatrixLeads = crossRowLabels.map((rowKey) =>
-    crossColLabels.map((colKey) => crossGenericMap.get(rowKey)?.get(colKey)?.leads ?? 0)
-  );
-  const crossMatrixSales = crossRowLabels.map((rowKey) =>
-    crossColLabels.map((colKey) => crossGenericMap.get(rowKey)?.get(colKey)?.sales ?? 0)
-  );
+  const revenueByRangeWithPct = FAIXAS.map((f) => {
+    const r = faixaMap.get(f.key)!;
+    const revenue = r?.revenue ?? 0;
+    const count = r?.count ?? 0;
+    return {
+      value: f.key,
+      opportunities: 0,
+      sales: count,
+      revenue,
+      appointments: 0,
+      callsRealized: 0,
+      pctOpportunities: 0,
+      pctRevenue: totalRevenueAll > 0 ? (revenue / totalRevenueAll) * 100 : 0,
+    };
+  }).filter((r) => r.sales > 0 || r.revenue > 0);
+  splitByFieldPanels.push({
+    dimId: "revenue_range",
+    label: "Faixa de faturamento",
+    totalOpportunities: totalOppAll,
+    totalRevenue: totalRevenueAll,
+    rows: revenueByRangeWithPct,
+  });
 
   return NextResponse.json({
     series,
@@ -535,21 +595,7 @@ export async function GET(request: NextRequest) {
     utmContent,
     bySource,
     revenueByRange,
-    crossSourceResponsible: {
-      sources: crossSources,
-      responsibles: crossResponsibles,
-      leads: crossLeads,
-      sales: crossSales,
-    },
-    availableDimensions,
-    crossMatrix: {
-      rowDim,
-      colDim,
-      rowLabels: crossRowLabels,
-      colLabels: crossColLabels,
-      leads: crossMatrixLeads,
-      sales: crossMatrixSales,
-    },
+    splitByField: splitByFieldPanels,
   });
   } catch (e) {
     // #region agent log

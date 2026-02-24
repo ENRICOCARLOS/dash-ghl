@@ -241,7 +241,7 @@ export function Topbar() {
                   role="listbox"
                 >
                   {clients.map((c) => (
-                    <li key={c.id} role="option">
+                    <li key={c.id} role="option" aria-selected={activeClient?.id === c.id}>
                       <button
                         type="button"
                         className="flex w-full items-center justify-between px-3 py-2 text-left text-[13px] transition-colors"

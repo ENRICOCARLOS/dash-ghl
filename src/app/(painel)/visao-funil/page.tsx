@@ -674,52 +674,12 @@ export default function PredefinicoesPage() {
               </div>
             </div>
             <div className="border-t border-[#1F2330] pt-4">
-              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-[#7B8099]">Relação oportunidade ↔ anúncios Meta (investimento)</p>
-              <p className="mb-3 text-xs text-[#7B8099]">
-                Defina qual coluna da oportunidade (UTM) corresponde à coluna da tabela de anúncios da Meta.
-                Com isso o sistema consegue puxar o investimento (spend) por oportunidade ou por campanha/criativo.
+              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-[#7B8099]">Investimento (spend) por UTM</p>
+              <p className="text-xs text-[#7B8099]">
+                A relação para investimento em anúncios Meta é a mesma do mapeamento <strong className="text-[#E8EAF0]">Facebook Ads → coluna UTM</strong> acima:
+                Campanha ↔ <code className="rounded bg-[#1F2330] px-1">utm_campaign</code>, Conjunto ↔ <code className="rounded bg-[#1F2330] px-1">utm_medium</code>, Criativo ↔ <code className="rounded bg-[#1F2330] px-1">utm_content</code>.
+                Com isso o sistema calcula o investimento (spend) por campanha, por conjunto ou por criativo nas análises por UTM.
               </p>
-              <div className="space-y-2">
-                <div className="flex items-center gap-4">
-                  <label className="w-48 shrink-0 text-sm text-[#7B8099]">Coluna da oportunidade</label>
-                  <select
-                    value={utmMapping.opportunity_ads_link_opportunity_column ?? ""}
-                    onChange={(e) =>
-                      setUtmMapping((prev) => ({
-                        ...prev,
-                        opportunity_ads_link_opportunity_column: e.target.value || null,
-                      }))
-                    }
-                    className="min-w-0 flex-1 max-w-xs rounded border border-[#1F2330] bg-[#1A1F2E] px-3 py-2 text-sm text-[#E8EAF0]"
-                  >
-                    <option value="">— Nenhuma —</option>
-                    {UTM_COLUMN_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex items-center gap-4">
-                  <label className="w-48 shrink-0 text-sm text-[#7B8099]">Coluna da tabela de anúncios Meta</label>
-                  <select
-                    value={utmMapping.opportunity_ads_link_ads_column ?? ""}
-                    onChange={(e) =>
-                      setUtmMapping((prev) => ({
-                        ...prev,
-                        opportunity_ads_link_ads_column: e.target.value || null,
-                      }))
-                    }
-                    className="min-w-0 flex-1 max-w-xs rounded border border-[#1F2330] bg-[#1A1F2E] px-3 py-2 text-sm text-[#E8EAF0]"
-                  >
-                    <option value="">— Nenhuma —</option>
-                    <option value="ad_id">ad_id</option>
-                    <option value="ad_name">ad_name</option>
-                    <option value="campaign_id">campaign_id</option>
-                    <option value="campaign_name">campaign_name</option>
-                    <option value="adset_id">adset_id</option>
-                    <option value="adset_name">adset_name</option>
-                  </select>
-                </div>
-              </div>
             </div>
             <div className="border-t border-[#1F2330] pt-4">
               <p className="mb-2 text-xs font-medium uppercase tracking-wider text-[#7B8099]">UTM Source (lista de termos)</p>

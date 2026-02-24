@@ -84,7 +84,7 @@ function filterEventsByCreatedAt(events: GHLCalendarEvent[], startMs: number, en
   });
 }
 
-export type DashboardIndicatorsPayload = {
+type DashboardIndicatorsPayload = {
   saleDateFieldId: string | null;
   period: { start: number; end: number };
   previousPeriod: { start: number; end: number } | null;
